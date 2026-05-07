@@ -110,6 +110,20 @@ uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 
 uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --output-dir outputs
 ```
 
+启用真实联网检索（失败会自动回退 mock）：
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --search-mode real
+```
+
+`real` 模式会尝试多来源检索（DuckDuckGo + Wikipedia），并在报告的 `Search Mode Summary` 中显示命中统计。
+
+启用真实联网检索且禁止回退（用于严格验证 real 路径）：
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --search-mode real --no-search-fallback
+```
+
 预期流程：
 
 1. Supervisor 接收用户主题

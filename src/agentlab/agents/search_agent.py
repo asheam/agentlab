@@ -10,7 +10,12 @@ from agentlab.core.message import Message
 
 
 class SearchAgent(Agent):
-    def __init__(self, model: Any = None, tool_name: str = "web_search") -> None:
+    def __init__(
+        self,
+        model: Any = None,
+        tool_name: str = "web_search",
+        fail_on_tool_error: bool = False,
+    ) -> None:
         super().__init__(
             name="searcher",
             role="searcher",
@@ -19,6 +24,7 @@ class SearchAgent(Agent):
             tools=[tool_name],
         )
         self.tool_name = tool_name
+        self.fail_on_tool_error = fail_on_tool_error
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         if context.blackboard is None:
@@ -34,6 +40,7 @@ class SearchAgent(Agent):
             topic = ""
 
         search_results: list[dict[str, Any]] = []
+        tool_errors: list[str] = []
         for question in plan:
             query = f"{topic} {question}".strip() if topic else str(question)
             start = perf_counter()
@@ -57,6 +64,7 @@ class SearchAgent(Agent):
                 elapsed_ms = (perf_counter() - start) * 1000
                 error_result = {"question": question, "error": str(exc)}
                 search_results.append(error_result)
+                tool_errors.append(str(exc))
                 if context.trace_recorder is not None:
                     context.trace_recorder.record(
                         Event(
@@ -72,6 +80,9 @@ class SearchAgent(Agent):
                     )
 
         context.blackboard.write("search_results", search_results, author=self.name)
+        if tool_errors and self.fail_on_tool_error:
+            raise RuntimeError(tool_errors[0])
+
         return Message(
             sender=self.name,
             receiver=message.sender,

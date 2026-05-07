@@ -109,6 +109,20 @@ def _build_report(
         lines.append(f"- {framework}: {evidence}")
     lines.append("")
 
+    lines.append("## Search Mode Summary")
+    summary = _summarize_search_modes(search_results)
+    lines.append(f"- Total queries: {summary['total_queries']}")
+    lines.append(f"- Real results: {summary['real_count']}")
+    lines.append(f"- Mock results: {summary['mock_count']}")
+    lines.append(f"- Fallback used: {summary['fallback_count']}")
+    lines.append(f"- DuckDuckGo hits: {summary['duckduckgo_hits']}")
+    lines.append(f"- Wikipedia hits: {summary['wikipedia_hits']}")
+    if summary["fallback_reasons"]:
+        lines.append(f"- Fallback reasons: {', '.join(summary['fallback_reasons'])}")
+    if summary["error_count"] > 0:
+        lines.append(f"- Tool errors: {summary['error_count']}")
+    lines.append("")
+
     lines.append("## Critique")
     if isinstance(critique, dict):
         for strength in critique.get("strengths", []):
@@ -261,3 +275,68 @@ def _record_model_event(
             error=error,
         )
     )
+
+
+def _summarize_search_modes(search_results: Any) -> dict[str, Any]:
+    total_queries = 0
+    real_count = 0
+    mock_count = 0
+    fallback_count = 0
+    error_count = 0
+    duckduckgo_hits = 0
+    wikipedia_hits = 0
+    fallback_reasons: list[str] = []
+
+    if not isinstance(search_results, list):
+        return {
+            "total_queries": 0,
+            "real_count": 0,
+            "mock_count": 0,
+            "fallback_count": 0,
+            "error_count": 0,
+            "duckduckgo_hits": 0,
+            "wikipedia_hits": 0,
+            "fallback_reasons": [],
+        }
+
+    for item in search_results:
+        if not isinstance(item, dict):
+            continue
+        total_queries += 1
+
+        if "error" in item:
+            error_count += 1
+            continue
+
+        result = item.get("result")
+        if not isinstance(result, dict):
+            continue
+
+        mode = result.get("mode")
+        if mode == "real":
+            real_count += 1
+        elif mode == "mock":
+            mock_count += 1
+
+        source_hits = result.get("source_hits")
+        if isinstance(source_hits, dict):
+            duckduckgo_hits += int(source_hits.get("duckduckgo", 0) or 0)
+            wikipedia_hits += int(source_hits.get("wikipedia", 0) or 0)
+
+        if result.get("fallback_used") is True:
+            fallback_count += 1
+            reason = result.get("fallback_reason")
+            if isinstance(reason, str) and reason:
+                fallback_reasons.append(reason)
+
+    unique_reasons = list(dict.fromkeys(fallback_reasons))
+    return {
+        "total_queries": total_queries,
+        "real_count": real_count,
+        "mock_count": mock_count,
+        "fallback_count": fallback_count,
+        "error_count": error_count,
+        "duckduckgo_hits": duckduckgo_hits,
+        "wikipedia_hits": wikipedia_hits,
+        "fallback_reasons": unique_reasons,
+    }

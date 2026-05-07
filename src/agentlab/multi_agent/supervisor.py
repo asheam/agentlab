@@ -85,10 +85,14 @@ def _build_error_report(topic: str, error: str) -> str:
 def build_default_supervisor(
     output_dir: str | Path = "outputs",
     use_openai_model: bool = False,
+    search_mode: str = "mock",
+    allow_search_fallback: bool = True,
 ) -> Supervisor:
     tool_registry = ToolRegistry()
     tool_registry.register(CalculatorTool())
-    tool_registry.register(WebSearchTool())
+    tool_registry.register(
+        WebSearchTool(mode=search_mode, allow_fallback=allow_search_fallback)
+    )
 
     runtime = AgentRuntime(
         tool_registry=tool_registry,
@@ -100,10 +104,11 @@ def build_default_supervisor(
     model: BaseModel | None = OpenAICompatibleModel() if use_openai_model else None
 
     team = AgentTeam(runtime)
+    strict_real_search = search_mode == "real" and not allow_search_fallback
     team.add_many(
         [
             PlannerAgent(model=model),
-            SearchAgent(model=model),
+            SearchAgent(model=model, fail_on_tool_error=strict_real_search),
             ReaderAgent(model=model),
             CriticAgent(model=model),
             WriterAgent(model=model),

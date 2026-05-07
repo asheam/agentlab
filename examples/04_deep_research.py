@@ -21,6 +21,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="outputs",
         help="Directory for report.md, trace.json, workspace.json",
     )
+    parser.add_argument(
+        "--search-mode",
+        choices=["mock", "real"],
+        default="mock",
+        help="Search backend mode. 'mock' is offline-safe, 'real' uses web requests with fallback.",
+    )
+    parser.add_argument(
+        "--no-search-fallback",
+        action="store_true",
+        help="Disable fallback to mock search when real search fails or returns empty.",
+    )
     return parser.parse_args(argv)
 
 
@@ -29,6 +40,8 @@ def main(argv: list[str] | None = None) -> int:
     supervisor = build_default_supervisor(
         output_dir=args.output_dir,
         use_openai_model=args.use_openai,
+        search_mode=args.search_mode,
+        allow_search_fallback=not args.no_search_fallback,
     )
     outputs = supervisor.run(args.topic)
 
