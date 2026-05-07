@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import re
 from typing import Any
 
 from agentlab.core.agent import Agent
@@ -18,7 +19,10 @@ class PlannerAgent(Agent):
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         topic = message.content.strip()
-        plan = _build_plan(topic)
+        if self.model is not None:
+            plan = _build_plan_with_model(topic, self.model)
+        else:
+            plan = _build_plan(topic)
 
         if context.blackboard is not None:
             context.blackboard.write("plan", plan, author=self.name)
@@ -49,3 +53,37 @@ def _build_plan(topic: str) -> list[str]:
         f"{topic} 的关键评估指标是什么？",
         f"{topic} 在实际落地中的常见风险是什么？",
     ]
+
+
+def _build_plan_with_model(topic: str, model: Any) -> list[str]:
+    if not hasattr(model, "generate"):
+        return _build_plan(topic)
+
+    prompt = (
+        "请把研究主题拆解成 3-5 个研究问题。"
+        "仅输出问题本身，每行一个，不要解释。"
+        f"\n主题：{topic}"
+    )
+    raw = model.generate(
+        [
+            {"role": "system", "content": "You are a research planner."},
+            {"role": "user", "content": prompt},
+        ]
+    )
+    parsed = _parse_plan_lines(raw)
+    if len(parsed) < 3:
+        return _build_plan(topic)
+    return parsed[:5]
+
+
+def _parse_plan_lines(raw: str) -> list[str]:
+    lines: list[str] = []
+    for line in raw.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        cleaned = re.sub(r"^\s*(?:[-*]|\d+[.)]?)\s*", "", cleaned).strip()
+        if cleaned:
+            lines.append(cleaned)
+
+    return list(dict.fromkeys(lines))

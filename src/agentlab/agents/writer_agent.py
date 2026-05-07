@@ -4,6 +4,7 @@ from typing import Any
 
 from agentlab.core.agent import Agent
 from agentlab.core.context import RuntimeContext
+from agentlab.core.event import Event
 from agentlab.core.message import Message
 
 
@@ -30,6 +31,35 @@ class WriterAgent(Agent):
         critique = context.blackboard.read("critique", {})
 
         report = _build_report(topic, plan, search_results, notes, critique)
+        if self.model is not None:
+            generated, model_error = _build_report_with_model(
+                topic=topic,
+                plan=plan,
+                notes=notes,
+                critique=critique,
+                search_results=search_results,
+                model=self.model,
+            )
+            if generated:
+                report = generated
+                _record_model_event(
+                    context=context,
+                    success=True,
+                    error=None,
+                    input_text=topic,
+                    output_text="model report generated",
+                )
+            else:
+                fallback_reason = model_error or "Writer model returned empty output."
+                report = _append_fallback_note(report, fallback_reason)
+                _record_model_event(
+                    context=context,
+                    success=False,
+                    error=fallback_reason,
+                    input_text=topic,
+                    output_text="fallback to template report",
+                )
+
         context.blackboard.write("report", report, author=self.name)
 
         if context.artifacts is not None:
@@ -137,3 +167,97 @@ def _framework_snapshot(key_points: Any) -> list[tuple[str, str]]:
     if not snapshots:
         snapshots.append(("General", "No framework-specific findings."))
     return snapshots
+
+
+def _build_report_with_model(
+    topic: str,
+    plan: Any,
+    notes: Any,
+    critique: Any,
+    search_results: Any,
+    model: Any,
+) -> tuple[str | None, str | None]:
+    if not hasattr(model, "generate"):
+        return None, "Model does not implement generate()."
+
+    prompt = (
+        "请输出 Markdown 研究报告，必须包含以下标题：\n"
+        "1) # Deep Research Report\n"
+        "2) ## Topic\n"
+        "3) ## Research Questions\n"
+        "4) ## Key Findings\n"
+        "5) ## Framework Snapshot\n"
+        "6) ## Critique\n"
+        "7) ## References\n"
+        "语言：中文，结论明确，避免冗长。\n\n"
+        f"Topic: {topic}\n"
+        f"Plan: {_safe_json(plan)}\n"
+        f"Notes: {_safe_json(notes)}\n"
+        f"Critique: {_safe_json(critique)}\n"
+        f"SearchResults: {_safe_json(search_results)}\n"
+    )
+    try:
+        output = model.generate(
+            [
+                {"role": "system", "content": "You are a senior technical research writer."},
+                {"role": "user", "content": prompt},
+            ]
+        )
+    except Exception as exc:
+        return None, f"Writer model call failed: {exc}"
+
+    text = output.strip()
+    if not text:
+        return None, "Writer model returned empty output."
+
+    missing_headers = _missing_required_headers(text)
+    if missing_headers:
+        return None, f"Writer model output missing required headers: {', '.join(missing_headers)}"
+
+    if not text.endswith("\n"):
+        text += "\n"
+    return text, None
+
+
+def _missing_required_headers(text: str) -> list[str]:
+    required_headers = [
+        "# Deep Research Report",
+        "## Topic",
+        "## Research Questions",
+        "## Key Findings",
+        "## Framework Snapshot",
+        "## Critique",
+        "## References",
+    ]
+    return [header for header in required_headers if header not in text]
+
+
+def _append_fallback_note(report: str, reason: str) -> str:
+    note = (
+        "\n## Model Fallback\n"
+        f"- Writer model output was not used: {reason}\n"
+    )
+    if report.endswith("\n"):
+        return report + note
+    return report + "\n" + note
+
+
+def _record_model_event(
+    context: RuntimeContext,
+    success: bool,
+    error: str | None,
+    input_text: str,
+    output_text: str,
+) -> None:
+    if context.trace_recorder is None:
+        return
+    context.trace_recorder.record(
+        Event(
+            event_type="model_call",
+            agent="writer",
+            input=input_text,
+            output=output_text,
+            success=success,
+            error=error,
+        )
+    )

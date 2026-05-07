@@ -98,6 +98,18 @@ agentlab/
 uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别"
 ```
 
+启用 OpenAI-compatible API（例如 DeepSeek）：
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --use-openai
+```
+
+自定义输出目录：
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --output-dir outputs
+```
+
 预期流程：
 
 1. Supervisor 接收用户主题

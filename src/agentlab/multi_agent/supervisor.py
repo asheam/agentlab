@@ -11,6 +11,8 @@ from agentlab.agents import (
 )
 from agentlab.core.message import Message
 from agentlab.core.runtime import AgentRuntime
+from agentlab.models.base import BaseModel
+from agentlab.models.openai_compatible import OpenAICompatibleModel
 from agentlab.multi_agent.scheduler import FixedOrderScheduler
 from agentlab.multi_agent.team import AgentTeam
 from agentlab.tools.calculator import CalculatorTool
@@ -29,6 +31,7 @@ class Supervisor:
     def run(self, topic: str) -> dict[str, Path]:
         sender = "supervisor"
         latest_response: Message | None = None
+        run_error: RuntimeError | None = None
 
         for agent_name in self.scheduler.get_order():
             request = Message(
@@ -40,7 +43,8 @@ class Supervisor:
             )
             latest_response = self.runtime.send(request)
             if latest_response.type == "error":
-                raise RuntimeError(latest_response.content)
+                run_error = RuntimeError(latest_response.content)
+                break
             sender = agent_name
 
         report = self.runtime.blackboard.read("report", "")
@@ -48,6 +52,8 @@ class Supervisor:
             report = str(report)
         if not report and latest_response is not None:
             report = latest_response.content
+        if run_error is not None and not report.strip():
+            report = _build_error_report(topic, str(run_error))
 
         report_path = self.runtime.artifacts.save_text("report.md", report)
         trace_path = self.runtime.trace_recorder.export_json(
@@ -57,14 +63,29 @@ class Supervisor:
             self.runtime.artifacts.base_dir / "workspace.json"
         )
 
-        return {
+        outputs = {
             "report_path": report_path,
             "trace_path": trace_path,
             "workspace_path": workspace_path,
         }
+        if run_error is not None:
+            raise run_error
+        return outputs
 
 
-def build_default_supervisor(output_dir: str | Path = "outputs") -> Supervisor:
+def _build_error_report(topic: str, error: str) -> str:
+    return (
+        "# Deep Research Report\n\n"
+        f"## Topic\n{topic}\n\n"
+        "## Runtime Error\n"
+        f"- {error}\n"
+    )
+
+
+def build_default_supervisor(
+    output_dir: str | Path = "outputs",
+    use_openai_model: bool = False,
+) -> Supervisor:
     tool_registry = ToolRegistry()
     tool_registry.register(CalculatorTool())
     tool_registry.register(WebSearchTool())
@@ -76,14 +97,16 @@ def build_default_supervisor(output_dir: str | Path = "outputs") -> Supervisor:
         artifacts=ArtifactStore(base_dir=output_dir),
     )
 
+    model: BaseModel | None = OpenAICompatibleModel() if use_openai_model else None
+
     team = AgentTeam(runtime)
     team.add_many(
         [
-            PlannerAgent(),
-            SearchAgent(),
-            ReaderAgent(),
-            CriticAgent(),
-            WriterAgent(),
+            PlannerAgent(model=model),
+            SearchAgent(model=model),
+            ReaderAgent(model=model),
+            CriticAgent(model=model),
+            WriterAgent(model=model),
         ]
     )
 
