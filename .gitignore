@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+.env
+
+outputs/*
+!outputs/.gitkeep
+
+*.pyc
+*.pyo
+*.pyd
+
+.DS_Store
+Thumbs.db
