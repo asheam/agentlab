@@ -22,6 +22,10 @@ def test_supervisor_generates_outputs(tmp_path) -> None:
     assert "## Search Mode Summary" in report_text
     assert "DuckDuckGo hits" in report_text
     assert "Wikipedia hits" in report_text
+    assert "Tavily hits" in report_text
+    assert "DuckDuckGo errors" in report_text
+    assert "Wikipedia errors" in report_text
+    assert "Tavily errors" in report_text
 
     workspace_payload = json.loads(workspace_path.read_text(encoding="utf-8"))
     for key in ["plan", "search_results", "notes", "critique", "report"]:

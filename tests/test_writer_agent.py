@@ -119,3 +119,50 @@ def test_writer_agent_falls_back_when_model_output_missing_headers(tmp_path: Pat
 
     assert response.content.startswith("# Deep Research Report")
     assert "## Model Fallback" in response.content
+
+
+def test_writer_agent_reports_provider_error_counts(tmp_path: Path) -> None:
+    agent = WriterAgent()
+    context = _build_context(tmp_path)
+
+    assert context.blackboard is not None
+    context.blackboard.write(
+        "search_results",
+        [
+            {
+                "question": "Q1",
+                "result": {
+                    "mode": "real",
+                    "fallback_used": False,
+                    "source_hits": {"duckduckgo": 0, "wikipedia": 2, "tavily": 0},
+                    "real_issues": [
+                        "tavily_error: tavily_missing_api_key",
+                        "duckduckgo_error: timeout",
+                    ],
+                },
+            },
+            {
+                "question": "Q2",
+                "result": {
+                    "mode": "mock",
+                    "fallback_used": True,
+                    "source_hits": {"duckduckgo": 0, "wikipedia": 0, "tavily": 0},
+                    "fallback_reason": "candidate A: tavily_error: tavily_missing_api_key",
+                },
+            },
+            {
+                "question": "Q3",
+                "error": "Failed to execute tool 'web_search': wikipedia_error: blocked",
+            },
+        ],
+        author="searcher",
+    )
+
+    response = agent.run(
+        Message(sender="supervisor", receiver="writer", content="topic", type="task", metadata={"topic": "topic"}),
+        context,
+    )
+
+    assert "| DuckDuckGo errors | 1 |" in response.content
+    assert "| Wikipedia errors | 1 |" in response.content
+    assert "| Tavily errors | 2 |" in response.content

@@ -32,16 +32,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Disable fallback to mock search when real search fails or returns empty.",
     )
+    parser.add_argument(
+        "--search-providers",
+        default="duckduckgo,wikipedia,tavily",
+        help=(
+            "Comma-separated providers for real search mode. "
+            "Supported: duckduckgo,wikipedia,tavily"
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    search_providers = [item.strip() for item in args.search_providers.split(",") if item.strip()]
     supervisor = build_default_supervisor(
         output_dir=args.output_dir,
         use_openai_model=args.use_openai,
         search_mode=args.search_mode,
         allow_search_fallback=not args.no_search_fallback,
+        search_providers=search_providers,
     )
     outputs = supervisor.run(args.topic)
 

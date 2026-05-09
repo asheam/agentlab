@@ -44,6 +44,7 @@ uv sync --dev
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
+- `TAVILY_API_KEY`（使用 Tavily real search 时）
 
 未配置 API Key 时，默认可使用 `MockModel` 跑通示例与测试。
 
@@ -116,7 +117,13 @@ uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 
 uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --search-mode real
 ```
 
-`real` 模式会尝试多来源检索（DuckDuckGo + Wikipedia），并在报告的 `Search Mode Summary` 中显示命中统计。
+`real` 模式会按 provider 顺序尝试检索（默认：`duckduckgo,wikipedia,tavily`），并在报告的 `Search Mode Summary` 中显示命中与错误统计。
+
+显式优先使用 Tavily：
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --search-mode real --search-providers tavily,duckduckgo,wikipedia
+```
 
 启用真实联网检索且禁止回退（用于严格验证 real 路径）：
 
@@ -140,6 +147,11 @@ Demo 运行后会在 `outputs/` 生成：
 - `report.md`：最终 Markdown 研究报告
 - `trace.json`：执行轨迹与事件日志
 - `workspace.json`：Blackboard 共享工作区快照
+
+说明：
+
+- `report.md` 默认只保留可读性更强的摘要与结论，不包含原始检索大段内容。
+- 调试和复盘请优先查看 `trace.json` 与 `workspace.json`（包含更完整的过程数据）。
 
 这些文件用于回放过程、诊断问题、优化 Agent 协作策略。
 

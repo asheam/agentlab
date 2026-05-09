@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 from urllib.error import URLError
@@ -24,6 +25,7 @@ class WebSearchTool(BaseTool):
         mode: str = "mock",
         timeout_s: float = 8.0,
         allow_fallback: bool = True,
+        real_providers: list[str] | tuple[str, ...] | None = None,
     ) -> None:
         normalized_mode = mode.strip().lower()
         if normalized_mode not in {"mock", "real"}:
@@ -31,6 +33,7 @@ class WebSearchTool(BaseTool):
         self.mode = normalized_mode
         self.timeout_s = timeout_s
         self.allow_fallback = allow_fallback
+        self.real_providers = _normalize_real_providers(real_providers)
 
     def run(self, **kwargs: Any) -> dict[str, Any]:
         query = kwargs.get("query")
@@ -47,7 +50,7 @@ class WebSearchTool(BaseTool):
         for candidate in candidates:
             try:
                 real_result = self._run_real_search(candidate)
-            except (URLError, TimeoutError, ValueError, OSError) as exc:
+            except (URLError, TimeoutError, ValueError, OSError, RuntimeError) as exc:
                 errors.append(f"{candidate}: real_search_error: {exc}")
                 continue
 
@@ -74,27 +77,25 @@ class WebSearchTool(BaseTool):
         fallback = _mock_search(cleaned_query)
         fallback["fallback_used"] = True
         fallback["fallback_reason"] = errors[0] if errors else "real_search_empty"
+        fallback["real_issues"] = errors
         fallback["query_candidates"] = candidates
         return fallback
 
     def _run_real_search(self, query: str) -> dict[str, Any]:
         results: list[dict[str, str]] = []
-        source_hits = {"duckduckgo": 0, "wikipedia": 0}
+        source_hits: dict[str, int] = {provider: 0 for provider in self.real_providers}
         issues: list[str] = []
 
-        try:
-            ddg_results = self._search_duckduckgo(query)
-            source_hits["duckduckgo"] = len(ddg_results)
-            results.extend(ddg_results)
-        except (URLError, TimeoutError, ValueError, OSError) as exc:
-            issues.append(f"duckduckgo_error: {exc}")
+        for provider in self.real_providers:
+            try:
+                provider_results = self._search_by_provider(provider, query)
+            except (URLError, TimeoutError, ValueError, OSError, RuntimeError) as exc:
+                issues.append(f"{provider}_error: {exc}")
+                continue
 
-        try:
-            wiki_results = self._search_wikipedia(query)
-            source_hits["wikipedia"] = len(wiki_results)
-            results.extend(_deduplicate_results(results, wiki_results))
-        except (URLError, TimeoutError, ValueError, OSError) as exc:
-            issues.append(f"wikipedia_error: {exc}")
+            source_hits[provider] = len(provider_results)
+            if provider_results:
+                results.extend(_deduplicate_results(results, provider_results))
 
         return {
             "query": query,
@@ -104,6 +105,15 @@ class WebSearchTool(BaseTool):
             "source_hits": source_hits,
             "real_issues": issues,
         }
+
+    def _search_by_provider(self, provider: str, query: str) -> list[dict[str, str]]:
+        if provider == "duckduckgo":
+            return self._search_duckduckgo(query)
+        if provider == "wikipedia":
+            return self._search_wikipedia(query)
+        if provider == "tavily":
+            return self._search_tavily(query)
+        raise ValueError(f"unsupported_provider: {provider}")
 
     def _search_duckduckgo(self, query: str) -> list[dict[str, str]]:
         endpoint = (
@@ -145,6 +155,62 @@ class WebSearchTool(BaseTool):
                 )
                 if len(results) >= 6:
                     break
+
+        return results
+
+    def _search_tavily(self, query: str) -> list[dict[str, str]]:
+        api_key = os.getenv("TAVILY_API_KEY", "").strip()
+        if not api_key:
+            raise ValueError("tavily_missing_api_key")
+
+        base_url = os.getenv("TAVILY_BASE_URL", "https://api.tavily.com").strip()
+        endpoint = f"{base_url.rstrip('/')}/search"
+        payload = {
+            "query": query,
+            "search_depth": "basic",
+            "max_results": 5,
+            "include_answer": True,
+            "include_raw_content": False,
+        }
+        request = Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "User-Agent": "AgentLab/0.1",
+            },
+            method="POST",
+        )
+
+        with urlopen(request, timeout=self.timeout_s) as response:
+            raw_payload = response.read()
+        data = json.loads(raw_payload.decode("utf-8"))
+
+        results: list[dict[str, str]] = []
+        answer = str(data.get("answer", "")).strip()
+        if answer:
+            results.append(
+                {
+                    "title": "Tavily answer",
+                    "snippet": answer,
+                    "source": "https://api.tavily.com/search",
+                }
+            )
+
+        source_items = data.get("results", [])
+        if not isinstance(source_items, list):
+            return results
+
+        for item in source_items:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title", "")).strip() or "Tavily result"
+            snippet = str(item.get("content", "")).strip()
+            url = str(item.get("url", "")).strip() or "https://tavily.com"
+            if not snippet and not title:
+                continue
+            results.append({"title": title, "snippet": snippet or title, "source": url})
 
         return results
 
@@ -211,6 +277,29 @@ def _build_real_query_candidates(query: str) -> list[str]:
         candidates.append(f"Compare {' '.join(framework_tokens)}")
 
     return list(dict.fromkeys(item.strip() for item in candidates if item.strip()))
+
+
+def _normalize_real_providers(
+    providers: list[str] | tuple[str, ...] | None,
+) -> list[str]:
+    default_providers = ["duckduckgo", "wikipedia", "tavily"]
+    selected = providers if providers is not None else default_providers
+
+    normalized: list[str] = []
+    for item in selected:
+        name = item.strip().lower()
+        if not name:
+            continue
+        if name not in {"duckduckgo", "wikipedia", "tavily"}:
+            raise ValueError(
+                "real providers must be any of: duckduckgo, wikipedia, tavily"
+            )
+        normalized.append(name)
+
+    deduplicated = list(dict.fromkeys(normalized))
+    if not deduplicated:
+        raise ValueError("real providers cannot be empty")
+    return deduplicated
 
 
 def _contains_cjk(text: str) -> bool:

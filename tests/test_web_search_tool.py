@@ -4,6 +4,8 @@ import io
 import json
 from urllib.error import URLError
 
+import pytest
+
 import agentlab.tools.web_search as web_search
 from agentlab.tools.web_search import WebSearchTool
 
@@ -69,6 +71,8 @@ def test_web_search_real_mode_falls_back_to_mock_on_error(monkeypatch) -> None:
     assert result["fallback_used"] is True
     fallback_reason = result.get("fallback_reason", "")
     assert "duckduckgo_error" in fallback_reason or "wikipedia_error" in fallback_reason
+    assert isinstance(result.get("real_issues"), list)
+    assert result["real_issues"]
     sources = [item["source"] for item in result["results"]]
     assert "mock://langgraph/overview" in sources
 
@@ -80,8 +84,6 @@ def test_web_search_real_mode_raises_when_fallback_disabled(monkeypatch) -> None
     monkeypatch.setattr(web_search, "urlopen", _fake_urlopen)
 
     tool = WebSearchTool(mode="real", allow_fallback=False)
-
-    import pytest
 
     with pytest.raises(RuntimeError, match="duckduckgo_error|wikipedia_error"):
         tool.run(query="LangGraph")
@@ -150,3 +152,46 @@ def test_web_search_real_mode_uses_wikipedia_when_ddg_empty(monkeypatch) -> None
     assert result["source_hits"]["duckduckgo"] == 0
     assert result["source_hits"]["wikipedia"] == 1
     assert result["results"][0]["source"].startswith("https://en.wikipedia.org/wiki/")
+
+
+def test_web_search_tavily_provider_returns_results(monkeypatch) -> None:
+    monkeypatch.setenv("TAVILY_API_KEY", "test-key")
+
+    def _fake_tavily(self, query):  # type: ignore[no-untyped-def]
+        return [
+            {
+                "title": "Tavily hit",
+                "snippet": f"Result for {query}",
+                "source": "https://example.com/tavily",
+            }
+        ]
+
+    monkeypatch.setattr(WebSearchTool, "_search_tavily", _fake_tavily)
+
+    tool = WebSearchTool(mode="real", allow_fallback=False, real_providers=["tavily"])
+    result = tool.run(query="LangGraph AutoGen CrewAI")
+
+    assert result["mode"] == "real"
+    assert result["fallback_used"] is False
+    assert result["source_hits"]["tavily"] == 1
+    assert result["results"][0]["source"] == "https://example.com/tavily"
+
+
+def test_web_search_tavily_missing_key_falls_back_when_allowed(monkeypatch) -> None:
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+
+    tool = WebSearchTool(mode="real", real_providers=["tavily"])
+    result = tool.run(query="LangGraph")
+
+    assert result["mode"] == "mock"
+    assert result["fallback_used"] is True
+    assert "tavily_missing_api_key" in str(result.get("fallback_reason", ""))
+
+
+def test_web_search_tavily_missing_key_raises_when_no_fallback(monkeypatch) -> None:
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+
+    tool = WebSearchTool(mode="real", allow_fallback=False, real_providers=["tavily"])
+
+    with pytest.raises(RuntimeError, match="tavily_missing_api_key"):
+        tool.run(query="LangGraph")

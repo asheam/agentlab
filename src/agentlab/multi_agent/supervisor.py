@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from agentlab.agents import (
     CriticAgent,
     PlannerAgent,
@@ -87,11 +89,19 @@ def build_default_supervisor(
     use_openai_model: bool = False,
     search_mode: str = "mock",
     allow_search_fallback: bool = True,
+    search_providers: list[str] | tuple[str, ...] | None = None,
 ) -> Supervisor:
+    # Ensure .env variables (e.g., OPENAI_API_KEY / TAVILY_API_KEY) are available.
+    load_dotenv()
+
     tool_registry = ToolRegistry()
     tool_registry.register(CalculatorTool())
     tool_registry.register(
-        WebSearchTool(mode=search_mode, allow_fallback=allow_search_fallback)
+        WebSearchTool(
+            mode=search_mode,
+            allow_fallback=allow_search_fallback,
+            real_providers=search_providers,
+        )
     )
 
     runtime = AgentRuntime(
