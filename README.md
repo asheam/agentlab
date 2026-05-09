@@ -1,10 +1,11 @@
-﻿# AgentLab v0.1
+﻿# AgentLab（v0.1 基线 + v0.2 候选增强）
 
-AgentLab 是一个面向学习与实验的轻量级 Python 多 Agent 框架。v0.1 的目标是用最小可用架构跑通从任务拆解到报告生成的完整协作链路，而不是追求复杂的生产级能力。
+AgentLab 是一个面向学习与实验的轻量级 Python 多 Agent 框架。  
+v0.1 目标是跑通最小可用协作链路；当前仓库在此基础上加入了 v0.2 候选增强（维度化笔记、对比矩阵、Critic 多模式、真实链路验收）。
 
 ## 1. 项目简介
 
-AgentLab v0.1 聚焦多 Agent 协作机制验证，核心流程是：
+AgentLab 聚焦多 Agent 协作机制验证，核心流程是：
 
 用户任务 -> Supervisor 调度 -> Planner/Search/Reader/Critic/Writer 协作 -> 产出报告与追踪数据。
 
@@ -25,6 +26,10 @@ AgentLab v0.1 聚焦多 Agent 协作机制验证，核心流程是：
 - Blackboard：共享工作区沉淀中间产物
 - Trace Recorder：记录调用事件、耗时、错误与工具执行信息
 - Deep Research Demo：可一键运行完整研究流程并产出文件
+- Critic 多模式：`--critic-mode auto|rule|llm`（支持 LLM 评审与规则回退）
+- 维度化笔记：`notes.structured.dimensions`（`core_paradigm/coordination_style/state_memory/best_fit/trade_off`）
+- 对比矩阵：Writer 优先使用维度证据生成 `Comparison Matrix`
+- Mock 维度语料：离线模式按维度返回不同片段，减少模板化输出
 
 ## 3. 安装方式
 
@@ -131,6 +136,22 @@ uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 
 uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --search-mode real --no-search-fallback
 ```
 
+Critic 评审模式（`auto`/`rule`/`llm`）：
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --critic-mode auto
+```
+
+- `auto`：有模型时优先用 LLM 评审，失败自动回退规则评审
+- `rule`：只使用规则评审（稳定、可离线）
+- `llm`：强制尝试 LLM 评审，无模型或失败时标记为 `rule_fallback`
+
+真实检索 + LLM Critic 示例：
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --search-mode real --critic-mode auto --use-openai
+```
+
 预期流程：
 
 1. Supervisor 接收用户主题
@@ -150,24 +171,37 @@ Demo 运行后会在 `outputs/` 生成：
 
 说明：
 
-- `report.md` 默认只保留可读性更强的摘要与结论，不包含原始检索大段内容。
-- 调试和复盘请优先查看 `trace.json` 与 `workspace.json`（包含更完整的过程数据）。
+- `report.md` 默认保留摘要、对比矩阵、评审结果和引用。
+- `workspace.json` 中 `notes.structured.dimensions` 可用于审查维度覆盖情况。
+- `critique` 中包含 `dimension_coverage`、`dimensions_covered`、`dimensions_missing` 等质量信号。
+- 调试和复盘请优先查看 `trace.json` 与 `workspace.json`（包含更完整过程数据）。
 
 这些文件用于回放过程、诊断问题、优化 Agent 协作策略。
 
+真实链路验收样例（rule/llm 两条链路）见：
+
+- `docs/qa_acceptance.md`
+
 ## 8. Roadmap
 
-v0.1（当前）
+v0.1（已完成）
 
 - 跑通最小可用多 Agent 协作系统
 - 保持轻依赖、可运行、可测试
 
-后续可选方向（v0.2+）
+v0.2（当前候选）
+
+- Critic `auto/rule/llm` 评审模式
+- Reader 维度化结构化笔记
+- Writer 维度优先对比矩阵
+- Mock 检索维度语料增强
+- 真实链路验收文档（rule/llm）
+
+后续方向（v0.3+）
 
 - 更灵活的调度策略与失败重试
-- 更丰富的 Tool Calling 协议
 - 更细粒度的 trace 可视化
-- 可替换的记忆模块与任务分解策略
+- 可替换的任务分解与笔记提炼策略
 
 ## 版本与约束
 

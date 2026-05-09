@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-from agentlab.agents.writer_agent import WriterAgent
+from agentlab.agents.writer_agent import (
+    WriterAgent,
+    _extract_framework_clause,
+    _select_framework_cell,
+)
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
 from agentlab.tracing.recorder import TraceRecorder
@@ -61,6 +65,11 @@ def test_writer_agent_uses_model_report_when_available(tmp_path: Path) -> None:
                 "## Framework Snapshot",
                 "- f1",
                 "",
+                "## Comparison Matrix",
+                "| Dimension | LangGraph | AutoGen | CrewAI |",
+                "| --- | --- | --- | --- |",
+                "| Core Paradigm | a | b | c |",
+                "",
                 "## Critique",
                 "- c1",
                 "",
@@ -101,6 +110,7 @@ def test_writer_agent_falls_back_when_model_returns_empty(tmp_path: Path) -> Non
 
     assert response.content.startswith("# Deep Research Report")
     assert "## Model Fallback" in response.content
+    assert "## Comparison Matrix" in response.content
     assert context.trace_recorder is not None
     payload = context.trace_recorder.to_dict()
     assert payload["events"][-1]["event_type"] == "model_call"
@@ -119,6 +129,7 @@ def test_writer_agent_falls_back_when_model_output_missing_headers(tmp_path: Pat
 
     assert response.content.startswith("# Deep Research Report")
     assert "## Model Fallback" in response.content
+    assert "## Comparison Matrix" in response.content
 
 
 def test_writer_agent_reports_provider_error_counts(tmp_path: Path) -> None:
@@ -163,6 +174,114 @@ def test_writer_agent_reports_provider_error_counts(tmp_path: Path) -> None:
         context,
     )
 
+    assert "## Comparison Matrix" in response.content
+    assert "| Dimension | LangGraph | AutoGen | CrewAI |" in response.content
     assert "| DuckDuckGo errors | 1 |" in response.content
     assert "| Wikipedia errors | 1 |" in response.content
     assert "| Tavily errors | 2 |" in response.content
+    assert "_Italic cells indicate fallback defaults when direct evidence is unavailable._" in response.content
+
+
+def test_extract_framework_clause_strips_natural_prefix() -> None:
+    result = _extract_framework_clause(
+        "LangGraph uses graph-based orchestration with state checkpoints.",
+        "langgraph",
+    )
+    assert result == "uses graph-based orchestration with state checkpoints."
+
+
+def test_select_framework_cell_marks_fallback_with_italics() -> None:
+    cell = _select_framework_cell(
+        framework="autogen",
+        points=[],
+        keywords=["conversation", "message"],
+        fallback="Conversation-loop based multi-agent collaboration.",
+    )
+    assert cell.startswith("_")
+    assert cell.endswith("_")
+
+
+def test_select_framework_cell_uses_highest_keyword_match() -> None:
+    cell = _select_framework_cell(
+        framework="langgraph",
+        points=[
+            "LangGraph handles workflow.",
+            "LangGraph has deterministic node-edge workflow with explicit state control.",
+        ],
+        keywords=["deterministic", "node", "edge", "state", "workflow"],
+        fallback="Graph/state-machine orchestration with explicit transitions.",
+    )
+    assert "deterministic node-edge workflow" in cell
+
+
+def test_writer_matrix_prefers_structured_notes(tmp_path: Path) -> None:
+    agent = WriterAgent()
+    context = _build_context(tmp_path)
+    assert context.blackboard is not None
+
+    context.blackboard.write(
+        "notes",
+        {
+            "key_points": ["generic finding without framework label"],
+            "references": ["mock://general/result"],
+            "summary": "summary",
+            "structured": {
+                "langgraph": {
+                    "points": ["LangGraph: framework-level generic note."],
+                    "references": ["mock://langgraph/overview"],
+                },
+                "autogen": {
+                    "points": ["AutoGen: framework-level generic note."],
+                    "references": ["mock://autogen/overview"],
+                },
+                "crewai": {
+                    "points": ["CrewAI: framework-level generic note."],
+                    "references": ["mock://crewai/overview"],
+                },
+                "common": {"points": [], "references": []},
+                "dimensions": {
+                    "core_paradigm": {
+                        "langgraph": ["LangGraph: graph/state-machine orchestration."],
+                        "autogen": ["AutoGen: conversation loop orchestration."],
+                        "crewai": ["CrewAI: role-task paradigm."],
+                        "common": [],
+                    },
+                    "coordination_style": {
+                        "langgraph": ["LangGraph: deterministic node-edge routing."],
+                        "autogen": ["AutoGen: turn-based dialogue coordination."],
+                        "crewai": ["CrewAI: delegation-based coordination."],
+                        "common": [],
+                    },
+                    "state_memory": {
+                        "langgraph": ["LangGraph: explicit checkpointed state."],
+                        "autogen": ["AutoGen: chat-history centric context."],
+                        "crewai": ["CrewAI: lightweight shared context."],
+                        "common": [],
+                    },
+                    "best_fit": {
+                        "langgraph": ["LangGraph: fit for complex audited workflows."],
+                        "autogen": ["AutoGen: fit for rapid conversational prototyping."],
+                        "crewai": ["CrewAI: fit for business process automation."],
+                        "common": [],
+                    },
+                    "trade_off": {
+                        "langgraph": ["LangGraph: higher setup and maintenance cost."],
+                        "autogen": ["AutoGen: easy drift without strict constraints."],
+                        "crewai": ["CrewAI: limited deep customization."],
+                        "common": [],
+                    },
+                },
+            },
+        },
+        author="reader",
+    )
+
+    response = agent.run(
+        Message(sender="supervisor", receiver="writer", content="topic", type="task", metadata={"topic": "topic"}),
+        context,
+    )
+
+    assert "## Comparison Matrix" in response.content
+    assert "deterministic node-edge routing" in response.content
+    assert "turn-based dialogue coordination" in response.content
+    assert "delegation-based coordination" in response.content

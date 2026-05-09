@@ -117,8 +117,21 @@ def _build_report(
     lines.append("## Framework Snapshot")
     lines.append("| Framework | Observation |")
     lines.append("| --- | --- |")
-    for framework, evidence in _framework_snapshot(key_points):
+    for framework, evidence in _framework_snapshot(notes, key_points):
         lines.append(f"| {framework} | {_escape_table_cell(evidence)} |")
+    lines.append("")
+
+    lines.append("## Comparison Matrix")
+    lines.append("| Dimension | LangGraph | AutoGen | CrewAI |")
+    lines.append("| --- | --- | --- | --- |")
+    for dimension, langgraph, autogen, crewai in _comparison_matrix_rows(notes, key_points):
+        lines.append(
+            f"| {dimension} | {_escape_table_cell(langgraph)} | "
+            f"{_escape_table_cell(autogen)} | {_escape_table_cell(crewai)} |"
+        )
+    lines.append(
+        "_Italic cells indicate fallback defaults when direct evidence is unavailable._"
+    )
     lines.append("")
 
     lines.append("## Key Findings")
@@ -152,6 +165,9 @@ def _build_report(
 
     lines.append("## Critique")
     if isinstance(critique, dict):
+        mode = critique.get("assessment_mode")
+        if isinstance(mode, str):
+            lines.append(f"- Assessment mode: {mode}")
         for strength in critique.get("strengths", []):
             lines.append(f"- Strength: {strength}")
         for gap in critique.get("gaps", []):
@@ -163,10 +179,26 @@ def _build_report(
             evidence = scores.get("evidence", "n/a")
             specificity = scores.get("specificity", "n/a")
             balance = scores.get("balance", "n/a")
+            reasoning_depth = scores.get("reasoning_depth", "n/a")
+            dimension_coverage = scores.get("dimension_coverage", "n/a")
             lines.append(
                 "- Scores: "
                 f"overall={overall}, coverage={coverage}, evidence={evidence}, "
-                f"specificity={specificity}, balance={balance}"
+                f"specificity={specificity}, balance={balance}, "
+                f"reasoning_depth={reasoning_depth}, dimension_coverage={dimension_coverage}"
+            )
+        stats = critique.get("stats", {})
+        if isinstance(stats, dict):
+            comparative = stats.get("comparative_points_count", "n/a")
+            limitation = stats.get("limitation_points_count", "n/a")
+            actionable = stats.get("actionable_points_count", "n/a")
+            domains = stats.get("source_domains_count", "n/a")
+            dimensions = stats.get("dimensions_covered_count", "n/a")
+            lines.append(
+                "- Signals: "
+                f"comparative_points={comparative}, limitation_points={limitation}, "
+                f"actionable_points={actionable}, source_domains={domains}, "
+                f"dimensions_covered={dimensions}"
             )
         recommendations = critique.get("recommendations", [])
         if isinstance(recommendations, list):
@@ -213,24 +245,19 @@ def _format_reference(reference: Any) -> str:
     return text
 
 
-def _framework_snapshot(key_points: Any) -> list[tuple[str, str]]:
-    if not isinstance(key_points, list):
-        return [("General", "No framework-specific findings.")]
-
-    corpus = " ".join(str(item) for item in key_points).lower()
+def _framework_snapshot(notes: Any, key_points: Any) -> list[tuple[str, str]]:
+    framework_points = _framework_points_for_matrix(notes, key_points)
     snapshots: list[tuple[str, str]] = []
-    if "langgraph" in corpus:
-        snapshots.append(
-            ("LangGraph", "Graph/state-machine orchestration is highlighted for complex flows.")
-        )
-    if "autogen" in corpus:
-        snapshots.append(
-            ("AutoGen", "Conversation-centric agent collaboration appears as a core strength.")
-        )
-    if "crewai" in corpus:
-        snapshots.append(
-            ("CrewAI", "Role/task-driven execution is emphasized for practical team workflows.")
-        )
+    for framework, label in (
+        ("langgraph", "LangGraph"),
+        ("autogen", "AutoGen"),
+        ("crewai", "CrewAI"),
+    ):
+        points = framework_points.get(framework, [])
+        if not points:
+            continue
+        observation = _representative_framework_observation(framework, points)
+        snapshots.append((label, observation))
     if not snapshots:
         snapshots.append(("General", "No framework-specific findings."))
     return snapshots
@@ -254,8 +281,9 @@ def _build_report_with_model(
         "3) ## Research Questions\n"
         "4) ## Key Findings\n"
         "5) ## Framework Snapshot\n"
-        "6) ## Critique\n"
-        "7) ## References\n"
+        "6) ## Comparison Matrix\n"
+        "7) ## Critique\n"
+        "8) ## References\n"
         "语言：中文，结论明确，避免冗长。\n\n"
         f"Topic: {topic}\n"
         f"Plan: {_safe_json(plan)}\n"
@@ -293,10 +321,272 @@ def _missing_required_headers(text: str) -> list[str]:
         "## Research Questions",
         "## Key Findings",
         "## Framework Snapshot",
+        "## Comparison Matrix",
         "## Critique",
         "## References",
     ]
     return [header for header in required_headers if header not in text]
+
+
+def _comparison_matrix_rows(notes: Any, key_points: Any) -> list[tuple[str, str, str, str]]:
+    framework_points = _framework_points_for_matrix(notes, key_points)
+    dimension_points = _dimension_points_for_matrix(notes)
+    row_specs = [
+        (
+            "core_paradigm",
+            "Core Paradigm",
+            ["graph", "state", "workflow", "图", "状态机", "编排"],
+            ["conversation", "dialog", "message", "对话", "消息"],
+            ["role", "task", "crew", "角色", "任务"],
+            {
+                "langgraph": "Graph/state-machine orchestration with explicit transitions.",
+                "autogen": "Conversation-loop based multi-agent collaboration.",
+                "crewai": "Role/task-oriented crew execution model.",
+            },
+        ),
+        (
+            "coordination_style",
+            "Coordination Style",
+            ["deterministic", "node", "edge", "branch", "确定性", "节点"],
+            ["loop", "turn", "chat", "交互", "轮次"],
+            ["delegate", "assignment", "owner", "分工", "委派"],
+            {
+                "langgraph": "Deterministic node-edge workflow and branch control.",
+                "autogen": "Dynamic dialogue with agent turn-taking.",
+                "crewai": "Role delegation and task-centric collaboration.",
+            },
+        ),
+        (
+            "state_memory",
+            "State & Memory",
+            ["durable", "state", "checkpoint", "持久", "状态", "检查点"],
+            ["history", "message", "memory", "历史", "记忆"],
+            ["context", "task context", "上下文", "共享"],
+            {
+                "langgraph": "Explicit state persistence and checkpoint recovery.",
+                "autogen": "Conversation history centric; memory is often external.",
+                "crewai": "Lightweight shared context around tasks and roles.",
+            },
+        ),
+        (
+            "best_fit",
+            "Best Fit",
+            ["complex", "audit", "reliable", "复杂", "可追踪"],
+            ["prototype", "experiment", "rapid", "原型", "实验"],
+            ["business", "workflow", "operation", "业务", "流程"],
+            {
+                "langgraph": "Complex, auditable and long-running workflows.",
+                "autogen": "Rapid prototyping of conversational agent systems.",
+                "crewai": "Business process automation with clear ownership.",
+            },
+        ),
+        (
+            "trade_off",
+            "Main Trade-off",
+            ["overhead", "complexity", "cost", "复杂", "成本"],
+            ["drift", "stability", "control", "漂移", "控制"],
+            ["depth", "customization", "abstraction", "深度", "定制"],
+            {
+                "langgraph": "Higher modeling complexity and maintenance cost.",
+                "autogen": "Conversation flow can drift without strict constraints.",
+                "crewai": "Abstraction is simple, but deep customization can be limited.",
+            },
+        ),
+    ]
+
+    rows: list[tuple[str, str, str, str]] = []
+    for dimension_key, dimension, lg_keywords, ag_keywords, ca_keywords, defaults in row_specs:
+        rows.append(
+            (
+                dimension,
+                _select_dimension_row_cell(
+                    framework="langgraph",
+                    framework_points=framework_points["langgraph"],
+                    dimension_points=dimension_points[dimension_key]["langgraph"],
+                    keywords=lg_keywords,
+                    fallback=defaults["langgraph"],
+                ),
+                _select_dimension_row_cell(
+                    framework="autogen",
+                    framework_points=framework_points["autogen"],
+                    dimension_points=dimension_points[dimension_key]["autogen"],
+                    keywords=ag_keywords,
+                    fallback=defaults["autogen"],
+                ),
+                _select_dimension_row_cell(
+                    framework="crewai",
+                    framework_points=framework_points["crewai"],
+                    dimension_points=dimension_points[dimension_key]["crewai"],
+                    keywords=ca_keywords,
+                    fallback=defaults["crewai"],
+                ),
+            )
+        )
+    return rows
+
+
+def _group_framework_points(key_points: Any) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {"langgraph": [], "autogen": [], "crewai": []}
+    if not isinstance(key_points, list):
+        return grouped
+
+    for item in key_points:
+        text = str(item).strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        for name in grouped:
+            if name in lowered:
+                grouped[name].append(text)
+    return grouped
+
+
+def _framework_points_for_matrix(notes: Any, key_points: Any) -> dict[str, list[str]]:
+    grouped = _group_framework_points(key_points)
+    if not isinstance(notes, dict):
+        return grouped
+
+    structured = notes.get("structured")
+    if not isinstance(structured, dict):
+        return grouped
+
+    for framework in ("langgraph", "autogen", "crewai"):
+        node = structured.get(framework)
+        if not isinstance(node, dict):
+            continue
+        raw_points = node.get("points", [])
+        if not isinstance(raw_points, list):
+            continue
+        points = [str(item).strip() for item in raw_points if str(item).strip()]
+        if points:
+            grouped[framework] = list(dict.fromkeys(points))
+    return grouped
+
+
+def _select_dimension_row_cell(
+    framework: str,
+    framework_points: list[str],
+    dimension_points: list[str],
+    keywords: list[str],
+    fallback: str,
+) -> str:
+    if dimension_points:
+        return _select_framework_cell(
+            framework=framework,
+            points=dimension_points,
+            keywords=keywords,
+            fallback=fallback,
+            fallback_when_no_match=False,
+        )
+
+    return _select_framework_cell(
+        framework=framework,
+        points=framework_points,
+        keywords=keywords,
+        fallback=fallback,
+        fallback_when_no_match=True,
+    )
+
+
+def _dimension_points_for_matrix(notes: Any) -> dict[str, dict[str, list[str]]]:
+    matrix_points: dict[str, dict[str, list[str]]] = {
+        "core_paradigm": {"langgraph": [], "autogen": [], "crewai": []},
+        "coordination_style": {"langgraph": [], "autogen": [], "crewai": []},
+        "state_memory": {"langgraph": [], "autogen": [], "crewai": []},
+        "best_fit": {"langgraph": [], "autogen": [], "crewai": []},
+        "trade_off": {"langgraph": [], "autogen": [], "crewai": []},
+    }
+    if not isinstance(notes, dict):
+        return matrix_points
+
+    structured = notes.get("structured")
+    if not isinstance(structured, dict):
+        return matrix_points
+
+    dimensions = structured.get("dimensions")
+    if not isinstance(dimensions, dict):
+        return matrix_points
+
+    for dimension_key in matrix_points:
+        node = dimensions.get(dimension_key)
+        if not isinstance(node, dict):
+            continue
+        for framework in ("langgraph", "autogen", "crewai"):
+            raw_points = node.get(framework, [])
+            if not isinstance(raw_points, list):
+                continue
+            points = [str(item).strip() for item in raw_points if str(item).strip()]
+            if points:
+                matrix_points[dimension_key][framework] = list(dict.fromkeys(points))
+    return matrix_points
+
+
+def _select_framework_cell(
+    framework: str,
+    points: list[str],
+    keywords: list[str],
+    fallback: str,
+    fallback_when_no_match: bool = True,
+) -> str:
+    if not points:
+        return _format_fallback_cell(fallback)
+
+    best_candidate: str | None = None
+    best_score = 0
+    for point in points:
+        candidate = _extract_framework_clause(point, framework) or point
+        lowered = candidate.lower()
+        if "strongest for" in lowered:
+            continue
+        score = sum(1 for keyword in keywords if keyword in lowered)
+        if score > best_score:
+            best_score = score
+            best_candidate = candidate
+            continue
+        if score == best_score and score > 0 and best_candidate is not None:
+            if len(candidate) > len(best_candidate):
+                best_candidate = candidate
+
+    if best_candidate is not None and best_score > 0:
+        return _truncate_text(best_candidate, max_chars=88)
+    if not fallback_when_no_match:
+        for point in points:
+            candidate = _extract_framework_clause(point, framework) or point
+            if "strongest for" in candidate.lower():
+                continue
+            return _truncate_text(candidate, max_chars=88)
+    return _format_fallback_cell(fallback)
+
+
+def _extract_framework_clause(text: str, framework: str) -> str | None:
+    segments = re.split(r"[;；]\s*", text)
+    token = framework.lower()
+    for segment in segments:
+        lowered = segment.lower()
+        if token not in lowered:
+            continue
+        cleaned = re.sub(
+            rf"^\s*{re.escape(framework)}(?:\s*[:：\-]\s*|[\s,，]+)",
+            "",
+            segment,
+            flags=re.I,
+        ).strip()
+        return cleaned or segment.strip()
+    return None
+
+
+def _representative_framework_observation(framework: str, points: list[str]) -> str:
+    if not points:
+        return "No framework-specific findings."
+    candidate = _extract_framework_clause(points[0], framework) or points[0]
+    return _truncate_text(candidate, max_chars=120)
+
+
+def _format_fallback_cell(text: str) -> str:
+    compact = text.strip()
+    if compact.startswith("_") and compact.endswith("_") and len(compact) >= 2:
+        return compact
+    return f"_{compact}_"
 
 
 def _append_fallback_note(report: str, reason: str) -> str:

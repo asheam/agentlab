@@ -3,6 +3,11 @@
 import re
 from typing import Any
 
+from agentlab.agents.research_dimensions import (
+    CONTENT_DIMENSION_KEYWORDS,
+    DIMENSIONS,
+    QUESTION_DIMENSION_KEYWORDS,
+)
 from agentlab.core.agent import Agent
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
@@ -34,9 +39,44 @@ class ReaderAgent(Agent):
         )
 
 
+_FRAMEWORKS = ("langgraph", "autogen", "crewai")
+_FRAMEWORK_LABELS = {
+    "langgraph": "LangGraph",
+    "autogen": "AutoGen",
+    "crewai": "CrewAI",
+}
+
+
 def _build_notes(search_results: Any) -> dict[str, Any]:
     key_points: list[str] = []
     references: list[str] = []
+    structured_points: dict[str, list[str]] = {
+        "langgraph": [],
+        "autogen": [],
+        "crewai": [],
+        "common": [],
+    }
+    structured_references: dict[str, list[str]] = {
+        "langgraph": [],
+        "autogen": [],
+        "crewai": [],
+        "common": [],
+    }
+    structured_dimensions: dict[str, dict[str, list[str]]] = {
+        dimension: {
+            "langgraph": [],
+            "autogen": [],
+            "crewai": [],
+            "common": [],
+        }
+        for dimension in DIMENSIONS
+    }
+    seen_dimension_points: dict[str, set[str]] = {
+        "langgraph": set(),
+        "autogen": set(),
+        "crewai": set(),
+        "common": set(),
+    }
 
     if isinstance(search_results, list):
         for item in search_results:
@@ -71,18 +111,38 @@ def _build_notes(search_results: Any) -> dict[str, Any]:
                 source = str(record.get("source", ""))
                 clean_title = _normalize_text(title, max_chars=90)
                 clean_snippet = _normalize_text(snippet, max_chars=180)
+                framework = _detect_framework(
+                    question=question,
+                    title=clean_title,
+                    snippet=clean_snippet,
+                    source=source,
+                )
                 if clean_title or clean_snippet:
-                    point = _compose_point(question, clean_title, clean_snippet)
+                    point = _compose_point(question, clean_title, clean_snippet, framework)
                     key_points.append(point)
+                    structured_points[framework].append(point)
+                    dimension = _detect_dimension(question, clean_title, clean_snippet)
+                    normalized_point = _normalize_point_for_dedup(point)
+                    if normalized_point not in seen_dimension_points[framework]:
+                        structured_dimensions[dimension][framework].append(point)
+                        seen_dimension_points[framework].add(normalized_point)
                 if source:
                     references.append(source)
+                    structured_references[framework].append(source)
 
     dedup_points = list(dict.fromkeys(key_points))
     dedup_references = list(dict.fromkeys(references))
+    structured = _build_structured_notes(
+        structured_points=structured_points,
+        structured_references=structured_references,
+        structured_dimensions=structured_dimensions,
+    )
+
     return {
         "key_points": dedup_points[:16],
         "references": dedup_references[:16],
         "summary": "；".join(dedup_points[:4]) if dedup_points else "暂无可用检索结果。",
+        "structured": structured,
     }
 
 
@@ -106,7 +166,77 @@ def _pick_primary_record(records: list[dict[str, Any]]) -> dict[str, Any]:
     return records[0]
 
 
-def _compose_point(question: str, title: str, snippet: str) -> str:
-    del question
+def _compose_point(_question: str, title: str, snippet: str, framework: str) -> str:
     headline = snippet or title or "No summary"
+    if framework in _FRAMEWORK_LABELS:
+        return f"{_FRAMEWORK_LABELS[framework]}: {headline}"
     return headline
+
+
+def _detect_framework(question: str, title: str, snippet: str, source: str) -> str:
+    corpus = f"{question}\n{title}\n{snippet}\n{source}".lower()
+    hits = [name for name in _FRAMEWORKS if name in corpus]
+    if len(hits) == 1:
+        return hits[0]
+    return "common"
+
+
+def _detect_dimension(question: str, title: str, snippet: str) -> str:
+    by_question = _detect_dimension_from_question(question)
+    if by_question is not None:
+        return by_question
+    return _detect_dimension_from_text(question, title, snippet)
+
+
+def _detect_dimension_from_question(question: str) -> str | None:
+    lowered = question.lower()
+    for dimension in DIMENSIONS:
+        keywords = QUESTION_DIMENSION_KEYWORDS.get(dimension, ())
+        if any(keyword.lower() in lowered for keyword in keywords):
+            return dimension
+    return None
+
+
+def _detect_dimension_from_text(question: str, title: str, snippet: str) -> str:
+    corpus = f"{question}\n{title}\n{snippet}".lower()
+    best_dimension = "core_paradigm"
+    best_score = -1
+    for dimension, keywords in CONTENT_DIMENSION_KEYWORDS.items():
+        score = sum(1 for keyword in keywords if keyword in corpus)
+        if score > best_score:
+            best_score = score
+            best_dimension = dimension
+    return best_dimension
+
+
+def _normalize_point_for_dedup(text: str) -> str:
+    lowered = text.lower()
+    normalized = _MULTI_SPACE.sub(" ", lowered).strip()
+    return normalized
+
+
+def _build_structured_notes(
+    structured_points: dict[str, list[str]],
+    structured_references: dict[str, list[str]],
+    structured_dimensions: dict[str, dict[str, list[str]]],
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key in ("langgraph", "autogen", "crewai", "common"):
+        points = [point for point in structured_points.get(key, []) if point]
+        refs = [ref for ref in structured_references.get(key, []) if ref]
+        payload[key] = {
+            "points": list(dict.fromkeys(points))[:8],
+            "references": list(dict.fromkeys(refs))[:8],
+        }
+
+    dimension_payload: dict[str, dict[str, list[str]]] = {}
+    for dimension in DIMENSIONS:
+        node = structured_dimensions.get(dimension, {})
+        dimension_payload[dimension] = {}
+        for framework in ("langgraph", "autogen", "crewai", "common"):
+            raw_points = node.get(framework, [])
+            points = [point for point in raw_points if point]
+            dimension_payload[dimension][framework] = list(dict.fromkeys(points))[:6]
+
+    payload["dimensions"] = dimension_payload
+    return payload

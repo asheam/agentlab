@@ -40,6 +40,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Supported: duckduckgo,wikipedia,tavily"
         ),
     )
+    parser.add_argument(
+        "--critic-mode",
+        choices=["auto", "rule", "llm"],
+        default="auto",
+        help="Critic strategy: auto tries LLM then falls back to rule, rule is deterministic only.",
+    )
     return parser.parse_args(argv)
 
 
@@ -52,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         search_mode=args.search_mode,
         allow_search_fallback=not args.no_search_fallback,
         search_providers=search_providers,
+        critic_mode=args.critic_mode,
     )
     outputs = supervisor.run(args.topic)
 

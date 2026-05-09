@@ -309,52 +309,109 @@ def _contains_cjk(text: str) -> bool:
     return False
 
 
+_MOCK_DIMENSIONS = (
+    "core_paradigm",
+    "coordination_style",
+    "state_memory",
+    "best_fit",
+    "trade_off",
+)
+
+_MOCK_DIMENSION_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "core_paradigm": ("核心设计", "理念", "目标场景", "core", "paradigm"),
+    "coordination_style": ("任务编排", "对话", "角色分工", "coordination", "workflow", "orchestration"),
+    "state_memory": ("状态管理", "工具调用", "可观测", "state", "memory", "observability"),
+    "best_fit": ("技术选型", "团队", "决策", "best fit", "selection", "scenario"),
+    "trade_off": ("优缺点", "学习成本", "扩展性", "工程落地", "trade-off", "cost", "risk"),
+}
+
+_MOCK_FRAMEWORK_SNIPPETS: dict[str, dict[str, str]] = {
+    "core_paradigm": {
+        "langgraph": "LangGraph uses graph/state-machine orchestration for explicit multi-step control.",
+        "autogen": "AutoGen focuses on conversation-centric multi-agent collaboration loops.",
+        "crewai": "CrewAI emphasizes role-task crews for practical business workflow automation.",
+    },
+    "coordination_style": {
+        "langgraph": "LangGraph coordinates via deterministic node-edge transitions with explicit routing.",
+        "autogen": "AutoGen coordinates by turn-based dialogue and message passing between agents.",
+        "crewai": "CrewAI coordinates through role delegation, task assignment, and crew planning.",
+    },
+    "state_memory": {
+        "langgraph": "LangGraph keeps explicit workflow state and supports checkpoint-style recovery.",
+        "autogen": "AutoGen relies on conversation history; long-term memory is often external.",
+        "crewai": "CrewAI keeps lightweight shared context around roles, goals, and task outputs.",
+    },
+    "best_fit": {
+        "langgraph": "LangGraph best fits complex, auditable, long-running production workflows.",
+        "autogen": "AutoGen best fits rapid prototyping of collaborative conversational agents.",
+        "crewai": "CrewAI best fits business process automation with clear role ownership.",
+    },
+    "trade_off": {
+        "langgraph": "LangGraph trade-off: strong control and observability with higher setup complexity.",
+        "autogen": "AutoGen trade-off: flexible interaction but easier to drift without constraints.",
+        "crewai": "CrewAI trade-off: fast onboarding but limited deep customization in some scenarios.",
+    },
+}
+
+_MOCK_COMPARISON_SNIPPETS: dict[str, str] = {
+    "core_paradigm": (
+        "Comparison: LangGraph favors explicit graph control, AutoGen favors conversational loops, "
+        "CrewAI favors role-task workflows."
+    ),
+    "coordination_style": (
+        "Coordination comparison: LangGraph uses deterministic graph routing, AutoGen uses dialogue turns, "
+        "CrewAI uses role delegation."
+    ),
+    "state_memory": (
+        "State comparison: LangGraph has explicit state checkpoints, AutoGen centers on chat history, "
+        "CrewAI uses lightweight shared context."
+    ),
+    "best_fit": (
+        "Scenario comparison: LangGraph for complex production orchestration, AutoGen for experiments, "
+        "CrewAI for business automation."
+    ),
+    "trade_off": (
+        "Trade-off comparison: LangGraph has higher complexity, AutoGen risks drift, "
+        "CrewAI may limit deep customization."
+    ),
+}
+
+
 def _mock_search(query: str) -> dict[str, Any]:
     normalized = query.lower()
+    dimension = _detect_mock_dimension(query)
     results: list[dict[str, str]] = []
+    snippets = _MOCK_FRAMEWORK_SNIPPETS.get(dimension, _MOCK_FRAMEWORK_SNIPPETS["core_paradigm"])
 
     if "langgraph" in normalized:
         results.append(
             {
-                "title": "LangGraph overview",
-                "snippet": (
-                    "Uses graph/state-machine style orchestration with explicit nodes, "
-                    "edges, and durable state for complex multi-step workflows."
-                ),
+                "title": f"LangGraph {dimension}",
+                "snippet": snippets["langgraph"],
                 "source": "mock://langgraph/overview",
             }
         )
     if "autogen" in normalized:
         results.append(
             {
-                "title": "AutoGen overview",
-                "snippet": (
-                    "Centers on multi-agent conversation loops and message-driven collaboration, "
-                    "convenient for dialogue-heavy automation."
-                ),
+                "title": f"AutoGen {dimension}",
+                "snippet": snippets["autogen"],
                 "source": "mock://autogen/overview",
             }
         )
     if "crewai" in normalized:
         results.append(
             {
-                "title": "CrewAI overview",
-                "snippet": (
-                    "Emphasizes role-based crews and task delegation, often easier to start "
-                    "for team/workflow style business use cases."
-                ),
+                "title": f"CrewAI {dimension}",
+                "snippet": snippets["crewai"],
                 "source": "mock://crewai/overview",
             }
         )
     if "langgraph" in normalized and "autogen" in normalized and "crewai" in normalized:
         results.append(
             {
-                "title": "Framework comparison snapshot",
-                "snippet": (
-                    "LangGraph: strongest for explicit stateful orchestration; "
-                    "AutoGen: strongest for conversational agent collaboration; "
-                    "CrewAI: strongest for role/task-driven execution speed."
-                ),
+                "title": f"Framework comparison snapshot ({dimension})",
+                "snippet": _MOCK_COMPARISON_SNIPPETS.get(dimension, _MOCK_COMPARISON_SNIPPETS["core_paradigm"]),
                 "source": "mock://comparison/langgraph-autogen-crewai",
             }
         )
@@ -373,7 +430,17 @@ def _mock_search(query: str) -> dict[str, Any]:
         "results": results,
         "mode": "mock",
         "fallback_used": False,
+        "mock_dimension": dimension,
     }
+
+
+def _detect_mock_dimension(query: str) -> str:
+    lowered = query.lower()
+    for dimension in _MOCK_DIMENSIONS:
+        keywords = _MOCK_DIMENSION_KEYWORDS.get(dimension, ())
+        if any(keyword.lower() in lowered for keyword in keywords):
+            return dimension
+    return "core_paradigm"
 
 
 def _flatten_related_topics(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

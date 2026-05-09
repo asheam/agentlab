@@ -29,6 +29,26 @@ def test_web_search_mock_mode_returns_mock_results() -> None:
     assert "mock://langgraph/overview" in sources
     assert "mock://autogen/overview" in sources
     assert "mock://crewai/overview" in sources
+    assert result["mock_dimension"] == "core_paradigm"
+
+
+def test_web_search_mock_mode_uses_dimension_specific_snippets() -> None:
+    tool = WebSearchTool(mode="mock")
+
+    coordination = tool.run(
+        query="研究 LangGraph、AutoGen、CrewAI 的区别 任务编排方式（图、对话、角色分工）有哪些关键差异？"
+    )
+    trade_off = tool.run(
+        query="研究 LangGraph、AutoGen、CrewAI 的区别 在学习成本、扩展性和工程落地上各自的优缺点是什么？"
+    )
+
+    assert coordination["mock_dimension"] == "coordination_style"
+    assert trade_off["mock_dimension"] == "trade_off"
+
+    coordination_snippets = [item["snippet"] for item in coordination["results"]]
+    tradeoff_snippets = [item["snippet"] for item in trade_off["results"]]
+    assert any("deterministic node-edge transitions" in snippet for snippet in coordination_snippets)
+    assert any("trade-off" in snippet.lower() for snippet in tradeoff_snippets)
 
 
 def test_web_search_real_mode_returns_real_results(monkeypatch) -> None:

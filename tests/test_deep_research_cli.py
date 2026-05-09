@@ -30,6 +30,7 @@ def test_parse_args_defaults() -> None:
     assert args.search_mode == "mock"
     assert args.no_search_fallback is False
     assert args.search_providers == "duckduckgo,wikipedia,tavily"
+    assert args.critic_mode == "auto"
     assert "LangGraph" in args.topic
 
 
@@ -47,6 +48,8 @@ def test_parse_args_openai_and_output_dir() -> None:
             "--no-search-fallback",
             "--search-providers",
             "tavily,duckduckgo",
+            "--critic-mode",
+            "llm",
         ]
     )
 
@@ -56,6 +59,7 @@ def test_parse_args_openai_and_output_dir() -> None:
     assert args.search_mode == "real"
     assert args.no_search_fallback is True
     assert args.search_providers == "tavily,duckduckgo"
+    assert args.critic_mode == "llm"
 
 
 def test_main_runs_with_mock_mode(tmp_path) -> None:

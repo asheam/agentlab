@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -90,6 +91,7 @@ def build_default_supervisor(
     search_mode: str = "mock",
     allow_search_fallback: bool = True,
     search_providers: list[str] | tuple[str, ...] | None = None,
+    critic_mode: Literal["auto", "rule", "llm"] = "auto",
 ) -> Supervisor:
     # Ensure .env variables (e.g., OPENAI_API_KEY / TAVILY_API_KEY) are available.
     load_dotenv()
@@ -120,7 +122,7 @@ def build_default_supervisor(
             PlannerAgent(model=model),
             SearchAgent(model=model, fail_on_tool_error=strict_real_search),
             ReaderAgent(model=model),
-            CriticAgent(model=model),
+            CriticAgent(model=model, critic_mode=critic_mode),
             WriterAgent(model=model),
         ]
     )
