@@ -1,4 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+
+from collections.abc import Iterable
 
 from agentlab.core.agent import Agent
 from agentlab.core.runtime import AgentRuntime
@@ -13,7 +15,7 @@ class AgentTeam:
         self._agents[agent.name] = agent
         self.runtime.register_agent(agent)
 
-    def add_many(self, agents: list[Agent]) -> None:
+    def add_many(self, agents: Iterable[Agent]) -> None:
         for agent in agents:
             self.add(agent)
 

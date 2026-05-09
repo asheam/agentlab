@@ -9,6 +9,7 @@ from agentlab.agents.writer_agent import (
 )
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
+from agentlab.models.base import LLMMessage, ModelResponse
 from agentlab.tracing.recorder import TraceRecorder
 from agentlab.workspace.artifacts import ArtifactStore
 from agentlab.workspace.blackboard import Blackboard
@@ -18,8 +19,9 @@ class FixedModel:
     def __init__(self, response: str) -> None:
         self.response = response
 
-    def generate(self, messages: list[dict[str, str]]) -> str:
-        return self.response
+    def generate(self, messages: list[LLMMessage]) -> ModelResponse:
+        del messages
+        return ModelResponse(content=self.response, model_name="fixed")
 
 
 def _build_context(tmp_path: Path) -> RuntimeContext:

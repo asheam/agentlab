@@ -8,9 +8,9 @@ def test_supervisor_generates_outputs(tmp_path) -> None:
 
     result = supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
 
-    report_path = result["report_path"]
-    trace_path = result["trace_path"]
-    workspace_path = result["workspace_path"]
+    report_path = result.report_path
+    trace_path = result.trace_path
+    workspace_path = result.workspace_path
 
     assert report_path.exists()
     assert trace_path.exists()
@@ -36,8 +36,8 @@ def test_supervisor_report_contains_framework_comparison(tmp_path) -> None:
     supervisor = build_default_supervisor(output_dir=tmp_path)
 
     result = supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
-    report_text = result["report_path"].read_text(encoding="utf-8")
-    workspace_payload = json.loads(result["workspace_path"].read_text(encoding="utf-8"))
+    report_text = result.report_path.read_text(encoding="utf-8")
+    workspace_payload = json.loads(result.workspace_path.read_text(encoding="utf-8"))
 
     assert "mock://langgraph/overview" in report_text
     assert "mock://autogen/overview" in report_text

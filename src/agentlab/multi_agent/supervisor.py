@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -16,7 +17,7 @@ from agentlab.core.message import Message
 from agentlab.core.runtime import AgentRuntime
 from agentlab.models.base import BaseModel
 from agentlab.models.openai_compatible import OpenAICompatibleModel
-from agentlab.multi_agent.scheduler import FixedOrderScheduler
+from agentlab.multi_agent.scheduler import AgentName, FixedOrderScheduler, Scheduler
 from agentlab.multi_agent.team import AgentTeam
 from agentlab.tools.calculator import CalculatorTool
 from agentlab.tools.registry import ToolRegistry
@@ -26,12 +27,26 @@ from agentlab.workspace.artifacts import ArtifactStore
 from agentlab.workspace.blackboard import Blackboard
 
 
+@dataclass(frozen=True)
+class SupervisorOutput:
+    report_path: Path
+    trace_path: Path
+    workspace_path: Path
+
+    def items(self) -> list[tuple[str, Path]]:
+        return [
+            ("report_path", self.report_path),
+            ("trace_path", self.trace_path),
+            ("workspace_path", self.workspace_path),
+        ]
+
+
 class Supervisor:
-    def __init__(self, runtime: AgentRuntime, scheduler: FixedOrderScheduler | None = None) -> None:
+    def __init__(self, runtime: AgentRuntime, scheduler: Scheduler | None = None) -> None:
         self.runtime = runtime
         self.scheduler = scheduler or FixedOrderScheduler()
 
-    def run(self, topic: str) -> dict[str, Path]:
+    def run(self, topic: str) -> SupervisorOutput:
         sender = "supervisor"
         latest_response: Message | None = None
         run_error: RuntimeError | None = None
@@ -66,11 +81,11 @@ class Supervisor:
             self.runtime.artifacts.base_dir / "workspace.json"
         )
 
-        outputs = {
-            "report_path": report_path,
-            "trace_path": trace_path,
-            "workspace_path": workspace_path,
-        }
+        outputs = SupervisorOutput(
+            report_path=report_path,
+            trace_path=trace_path,
+            workspace_path=workspace_path,
+        )
         if run_error is not None:
             raise run_error
         return outputs
@@ -130,7 +145,7 @@ def build_default_supervisor(
     return Supervisor(runtime=runtime, scheduler=FixedOrderScheduler())
 
 
-def _instruction_for(agent_name: str, topic: str) -> str:
+def _instruction_for(agent_name: AgentName, topic: str) -> str:
     if agent_name == "planner":
         return topic
     if agent_name == "searcher":

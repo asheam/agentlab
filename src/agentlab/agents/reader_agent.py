@@ -8,19 +8,24 @@ from agentlab.agents.research_dimensions import (
     DIMENSIONS,
     QUESTION_DIMENSION_KEYWORDS,
 )
-from agentlab.core.agent import Agent
+from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
+from agentlab.models.base import BaseModel
 
 
 class ReaderAgent(Agent):
-    def __init__(self, model: Any = None) -> None:
+    def __init__(self, model: BaseModel | None = None) -> None:
         super().__init__(
             name="reader",
             role="reader",
             system_prompt="Read search results and extract concise research notes.",
             model=model,
         )
+
+    @property
+    def required_services(self) -> set[ServiceName]:
+        return {"blackboard"}
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         if context.blackboard is None:

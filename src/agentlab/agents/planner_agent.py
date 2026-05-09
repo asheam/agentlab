@@ -1,21 +1,25 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import re
-from typing import Any
 
-from agentlab.core.agent import Agent
+from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
+from agentlab.models.base import BaseModel, LLMMessage
 
 
 class PlannerAgent(Agent):
-    def __init__(self, model: Any = None) -> None:
+    def __init__(self, model: BaseModel | None = None) -> None:
         super().__init__(
             name="planner",
             role="planner",
             system_prompt="Break down a research topic into focused questions.",
             model=model,
         )
+
+    @property
+    def required_services(self) -> set[ServiceName]:
+        return {"blackboard"}
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         topic = message.content.strip()
@@ -55,22 +59,19 @@ def _build_plan(topic: str) -> list[str]:
     ]
 
 
-def _build_plan_with_model(topic: str, model: Any) -> list[str]:
-    if not hasattr(model, "generate"):
-        return _build_plan(topic)
-
+def _build_plan_with_model(topic: str, model: BaseModel) -> list[str]:
     prompt = (
         "请把研究主题拆解成 3-5 个研究问题。"
         "仅输出问题本身，每行一个，不要解释。"
         f"\n主题：{topic}"
     )
-    raw = model.generate(
+    response = model.generate(
         [
-            {"role": "system", "content": "You are a research planner."},
-            {"role": "user", "content": prompt},
+            LLMMessage(role="system", content="You are a research planner."),
+            LLMMessage(role="user", content=prompt),
         ]
     )
-    parsed = _parse_plan_lines(raw)
+    parsed = _parse_plan_lines(response.content)
     if len(parsed) < 3:
         return _build_plan(topic)
     return parsed[:5]

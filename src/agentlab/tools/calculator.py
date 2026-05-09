@@ -26,11 +26,14 @@ _UNARY_OPERATORS: dict[type[ast.unaryop], Any] = {
 class CalculatorTool(BaseTool):
     name = "calculator"
     description = "Safely evaluate basic arithmetic expressions."
-    parameters = {
-        "type": "object",
-        "properties": {"expression": {"type": "string"}},
-        "required": ["expression"],
-    }
+
+    @property
+    def parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"expression": {"type": "string"}},
+            "required": ["expression"],
+        }
 
     def run(self, **kwargs: Any) -> float | int:
         expression = kwargs.get("expression")

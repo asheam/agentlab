@@ -3,20 +3,25 @@
 import re
 from typing import Any
 
-from agentlab.core.agent import Agent
+from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.event import Event
 from agentlab.core.message import Message
+from agentlab.models.base import BaseModel, LLMMessage
 
 
 class WriterAgent(Agent):
-    def __init__(self, model: Any = None) -> None:
+    def __init__(self, model: BaseModel | None = None) -> None:
         super().__init__(
             name="writer",
             role="writer",
             system_prompt="Write final markdown report from shared workspace.",
             model=model,
         )
+
+    @property
+    def required_services(self) -> set[ServiceName]:
+        return {"blackboard"}
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         if context.blackboard is None:
@@ -269,11 +274,8 @@ def _build_report_with_model(
     notes: Any,
     critique: Any,
     search_results: Any,
-    model: Any,
+    model: BaseModel,
 ) -> tuple[str | None, str | None]:
-    if not hasattr(model, "generate"):
-        return None, "Model does not implement generate()."
-
     prompt = (
         "请输出 Markdown 研究报告，必须包含以下标题：\n"
         "1) # Deep Research Report\n"
@@ -292,16 +294,16 @@ def _build_report_with_model(
         f"SearchResults: {_safe_json(search_results)}\n"
     )
     try:
-        output = model.generate(
+        response = model.generate(
             [
-                {"role": "system", "content": "You are a senior technical research writer."},
-                {"role": "user", "content": prompt},
+                LLMMessage(role="system", content="You are a senior technical research writer."),
+                LLMMessage(role="user", content=prompt),
             ]
         )
     except Exception as exc:
         return None, f"Writer model call failed: {exc}"
 
-    text = output.strip()
+    text = response.content.strip()
     if not text:
         return None, "Writer model returned empty output."
 

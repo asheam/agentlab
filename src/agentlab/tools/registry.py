@@ -1,6 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 from agentlab.tools.base import BaseTool
 
@@ -12,6 +13,8 @@ class ToolRegistry:
     def register(self, tool: BaseTool) -> None:
         if not tool.name:
             raise ValueError("Tool must define a non-empty name")
+        if tool.name in self._tools:
+            raise ValueError(f"Tool '{tool.name}' is already registered")
         self._tools[tool.name] = tool
 
     def get(self, name: str) -> BaseTool:

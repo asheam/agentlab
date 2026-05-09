@@ -1,13 +1,14 @@
-﻿from agentlab.models.mock_model import MockModel
+from agentlab.models.base import LLMMessage
+from agentlab.models.mock_model import MockModel
 
 
 def test_mock_model_returns_default_response() -> None:
     model = MockModel()
 
-    text = model.generate([{"role": "user", "content": "hello"}])
+    response = model.generate([LLMMessage(role="user", content="hello")])
 
-    assert isinstance(text, str)
-    assert text
+    assert isinstance(response.content, str)
+    assert response.content
 
 
 def test_mock_model_can_match_keywords() -> None:
@@ -18,6 +19,6 @@ def test_mock_model_can_match_keywords() -> None:
         }
     )
 
-    text = model.generate([{"role": "user", "content": "compare LangGraph and others"}])
+    response = model.generate([LLMMessage(role="user", content="compare LangGraph and others")])
 
-    assert text == "LangGraph mock"
+    assert response.content == "LangGraph mock"

@@ -9,16 +9,17 @@ from agentlab.agents.research_dimensions import CONTENT_DIMENSION_KEYWORDS, DIME
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field, ValidationError
 
-from agentlab.core.agent import Agent
+from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
+from agentlab.models.base import BaseModel, LLMMessage
 
 
 CriticMode = Literal["auto", "rule", "llm"]
 
 
 class CriticAgent(Agent):
-    def __init__(self, model: Any = None, critic_mode: CriticMode = "auto") -> None:
+    def __init__(self, model: BaseModel | None = None, critic_mode: CriticMode = "auto") -> None:
         super().__init__(
             name="critic",
             role="critic",
@@ -28,6 +29,10 @@ class CriticAgent(Agent):
         if critic_mode not in {"auto", "rule", "llm"}:
             raise ValueError("critic_mode must be one of: auto, rule, llm")
         self.critic_mode = critic_mode
+
+    @property
+    def required_services(self) -> set[ServiceName]:
+        return {"blackboard"}
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         if context.blackboard is None:
@@ -204,9 +209,9 @@ def _build_critique(notes: Any) -> dict[str, Any]:
 
 def _build_critique_with_model(
     notes: Any,
-    model: Any,
+    model: BaseModel | None,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    if model is None or not hasattr(model, "generate"):
+    if model is None:
         return None, "critic_model_missing_generate"
 
     prompt = (
@@ -222,19 +227,19 @@ def _build_critique_with_model(
     )
 
     try:
-        output = model.generate(
+        response = model.generate(
             [
-                {
-                    "role": "system",
-                    "content": "You are a strict evaluator and must output JSON only.",
-                },
-                {"role": "user", "content": prompt},
+                LLMMessage(
+                    role="system",
+                    content="You are a strict evaluator and must output JSON only.",
+                ),
+                LLMMessage(role="user", content=prompt),
             ]
         )
     except Exception as exc:
         return None, f"critic_model_call_failed: {exc}"
 
-    text = output.strip()
+    text = response.content.strip()
     if not text:
         return None, "critic_model_empty_output"
 

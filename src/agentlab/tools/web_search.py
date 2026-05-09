@@ -14,11 +14,14 @@ from agentlab.tools.base import BaseTool
 class WebSearchTool(BaseTool):
     name = "web_search"
     description = "Search tool with mock/real modes for deep-research demos."
-    parameters = {
-        "type": "object",
-        "properties": {"query": {"type": "string"}},
-        "required": ["query"],
-    }
+
+    @property
+    def parameters_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"],
+        }
 
     def __init__(
         self,

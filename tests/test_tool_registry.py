@@ -8,7 +8,6 @@ from agentlab.tools.registry import ToolRegistry
 class BrokenTool(BaseTool):
     name = "broken"
     description = "always fails"
-    parameters = {"type": "object", "properties": {}}
 
     def run(self, **kwargs: object) -> object:
         raise ValueError("boom")
@@ -46,3 +45,11 @@ def test_call_tool_exception_returns_clear_error() -> None:
 
     with pytest.raises(RuntimeError, match="Failed to execute tool 'broken': boom"):
         registry.call("broken", {})
+
+
+def test_register_duplicate_tool_name_raises_error() -> None:
+    registry = ToolRegistry()
+    registry.register(CalculatorTool())
+
+    with pytest.raises(ValueError, match="Tool 'calculator' is already registered"):
+        registry.register(CalculatorTool())

@@ -5,6 +5,7 @@ from typing import Any
 from agentlab.agents.critic_agent import CriticAgent, _build_critique
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
+from agentlab.models.base import LLMMessage, ModelResponse
 from agentlab.workspace.blackboard import Blackboard
 
 
@@ -110,9 +111,9 @@ class _StaticModel:
     def __init__(self, output: str) -> None:
         self.output = output
 
-    def generate(self, messages: list[dict[str, str]]) -> str:
+    def generate(self, messages: list[LLMMessage]) -> ModelResponse:
         del messages
-        return self.output
+        return ModelResponse(content=self.output, model_name="static")
 
 
 def _build_context_with_notes(notes: dict[str, Any]) -> RuntimeContext:

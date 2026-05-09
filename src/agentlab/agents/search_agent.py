@@ -1,18 +1,19 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from time import perf_counter
 from typing import Any
 
-from agentlab.core.agent import Agent
+from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.event import Event
 from agentlab.core.message import Message
+from agentlab.models.base import BaseModel
 
 
 class SearchAgent(Agent):
     def __init__(
         self,
-        model: Any = None,
+        model: BaseModel | None = None,
         tool_name: str = "web_search",
         fail_on_tool_error: bool = False,
     ) -> None:
@@ -21,10 +22,13 @@ class SearchAgent(Agent):
             role="searcher",
             system_prompt="Search supporting material for each planned question.",
             model=model,
-            tools=[tool_name],
         )
         self.tool_name = tool_name
         self.fail_on_tool_error = fail_on_tool_error
+
+    @property
+    def required_services(self) -> set[ServiceName]:
+        return {"blackboard", "tool_registry"}
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         if context.blackboard is None:
