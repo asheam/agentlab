@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+import warnings
 
 from dotenv import load_dotenv
 
@@ -13,6 +14,7 @@ from agentlab.agents import (
     SearchAgent,
     WriterAgent,
 )
+from agentlab.core.agent import Agent
 from agentlab.core.message import Message
 from agentlab.core.runtime import AgentRuntime
 from agentlab.models.base import BaseModel
@@ -25,6 +27,17 @@ from agentlab.tools.web_search import WebSearchTool
 from agentlab.tracing.recorder import TraceRecorder
 from agentlab.workspace.artifacts import ArtifactStore
 from agentlab.workspace.blackboard import Blackboard
+from agentlab.workspace.research_workspace import read_report
+
+
+@dataclass(frozen=True)
+class SupervisorConfig:
+    output_dir: str | Path = "outputs"
+    use_openai_model: bool = False
+    search_mode: str = "mock"
+    allow_search_fallback: bool = True
+    search_providers: list[str] | tuple[str, ...] | None = None
+    critic_mode: Literal["auto", "rule", "llm"] = "auto"
 
 
 @dataclass(frozen=True)
@@ -65,9 +78,7 @@ class Supervisor:
                 break
             sender = agent_name
 
-        report = self.runtime.blackboard.read("report", "")
-        if not isinstance(report, str):
-            report = str(report)
+        report = read_report(self.runtime.blackboard)
         if not report and latest_response is not None:
             report = latest_response.content
         if run_error is not None and not report.strip():
@@ -100,6 +111,30 @@ def _build_error_report(topic: str, error: str) -> str:
     )
 
 
+def build_default_tools(config: SupervisorConfig) -> ToolRegistry:
+    tool_registry = ToolRegistry()
+    tool_registry.register(CalculatorTool())
+    tool_registry.register(
+        WebSearchTool(
+            mode=config.search_mode,
+            allow_fallback=config.allow_search_fallback,
+            real_providers=config.search_providers,
+        )
+    )
+    return tool_registry
+
+
+def build_default_agents(model: BaseModel | None, config: SupervisorConfig) -> list[Agent]:
+    strict_real_search = config.search_mode == "real" and not config.allow_search_fallback
+    return [
+        PlannerAgent(model=model),
+        SearchAgent(model=model, fail_on_tool_error=strict_real_search),
+        ReaderAgent(model=model),
+        CriticAgent(model=model, critic_mode=config.critic_mode),
+        WriterAgent(model=model),
+    ]
+
+
 def build_default_supervisor(
     output_dir: str | Path = "outputs",
     use_openai_model: bool = False,
@@ -107,42 +142,64 @@ def build_default_supervisor(
     allow_search_fallback: bool = True,
     search_providers: list[str] | tuple[str, ...] | None = None,
     critic_mode: Literal["auto", "rule", "llm"] = "auto",
+    *,
+    config: SupervisorConfig | None = None,
 ) -> Supervisor:
     # Ensure .env variables (e.g., OPENAI_API_KEY / TAVILY_API_KEY) are available.
     load_dotenv()
 
-    tool_registry = ToolRegistry()
-    tool_registry.register(CalculatorTool())
-    tool_registry.register(
-        WebSearchTool(
-            mode=search_mode,
-            allow_fallback=allow_search_fallback,
-            real_providers=search_providers,
-        )
+    legacy_config = SupervisorConfig(
+        output_dir=output_dir,
+        use_openai_model=use_openai_model,
+        search_mode=search_mode,
+        allow_search_fallback=allow_search_fallback,
+        search_providers=search_providers,
+        critic_mode=critic_mode,
     )
+
+    if config is not None:
+        if _legacy_config_changed_from_defaults(legacy_config):
+            raise ValueError(
+                "build_default_supervisor received both 'config' and legacy kwargs. "
+                "Please use only SupervisorConfig."
+            )
+        effective_config = config
+    else:
+        effective_config = legacy_config
+        if _legacy_config_changed_from_defaults(legacy_config):
+            warnings.warn(
+                "build_default_supervisor legacy kwargs are deprecated and will be removed "
+                "in a future version. Use SupervisorConfig via `config=`.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+    tool_registry = build_default_tools(effective_config)
 
     runtime = AgentRuntime(
         tool_registry=tool_registry,
         blackboard=Blackboard(),
         trace_recorder=TraceRecorder(),
-        artifacts=ArtifactStore(base_dir=output_dir),
+        artifacts=ArtifactStore(base_dir=effective_config.output_dir),
     )
 
-    model: BaseModel | None = OpenAICompatibleModel() if use_openai_model else None
+    model: BaseModel | None = OpenAICompatibleModel() if effective_config.use_openai_model else None
 
     team = AgentTeam(runtime)
-    strict_real_search = search_mode == "real" and not allow_search_fallback
-    team.add_many(
-        [
-            PlannerAgent(model=model),
-            SearchAgent(model=model, fail_on_tool_error=strict_real_search),
-            ReaderAgent(model=model),
-            CriticAgent(model=model, critic_mode=critic_mode),
-            WriterAgent(model=model),
-        ]
-    )
-
+    team.add_many(build_default_agents(model=model, config=effective_config))
     return Supervisor(runtime=runtime, scheduler=FixedOrderScheduler())
+
+
+def _legacy_config_changed_from_defaults(config: SupervisorConfig) -> bool:
+    defaults = SupervisorConfig()
+    return (
+        Path(config.output_dir) != Path(defaults.output_dir)
+        or config.use_openai_model != defaults.use_openai_model
+        or config.search_mode != defaults.search_mode
+        or config.allow_search_fallback != defaults.allow_search_fallback
+        or tuple(config.search_providers or ()) != tuple(defaults.search_providers or ())
+        or config.critic_mode != defaults.critic_mode
+    )
 
 
 def _instruction_for(agent_name: AgentName, topic: str) -> str:

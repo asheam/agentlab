@@ -34,7 +34,9 @@ class OpenAICompatibleModel(BaseModel):
         model_name = self.model if isinstance(self.model, str) else "gpt-4o-mini"
         payload = [{"role": msg.role, "content": msg.content} for msg in messages]
         response = client.chat.completions.create(
+            # OpenAI SDK typing uses complex overloads; cast keeps our adapter API strongly typed.
             model=cast(Any, model_name),
+            # Payload shape is validated by our LLMMessage schema before this cast.
             messages=cast(Any, payload),
         )
         content = response.choices[0].message.content or ""

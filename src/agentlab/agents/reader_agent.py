@@ -12,6 +12,11 @@ from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
 from agentlab.models.base import BaseModel
+from agentlab.workspace.research_workspace import (
+    NotesPayload,
+    read_search_results,
+    write_notes,
+)
 
 
 class ReaderAgent(Agent):
@@ -31,10 +36,10 @@ class ReaderAgent(Agent):
         if context.blackboard is None:
             raise RuntimeError("blackboard is required for ReaderAgent")
 
-        search_results = context.blackboard.read("search_results", [])
+        search_results = read_search_results(context.blackboard)
         notes = _build_notes(search_results)
 
-        context.blackboard.write("notes", notes, author=self.name)
+        write_notes(context.blackboard, notes=notes, author=self.name)
         return Message(
             sender=self.name,
             receiver=message.sender,
@@ -52,7 +57,7 @@ _FRAMEWORK_LABELS = {
 }
 
 
-def _build_notes(search_results: Any) -> dict[str, Any]:
+def _build_notes(search_results: Any) -> NotesPayload:
     key_points: list[str] = []
     references: list[str] = []
     structured_points: dict[str, list[str]] = {
@@ -143,12 +148,13 @@ def _build_notes(search_results: Any) -> dict[str, Any]:
         structured_dimensions=structured_dimensions,
     )
 
-    return {
+    notes: NotesPayload = {
         "key_points": dedup_points[:16],
         "references": dedup_references[:16],
         "summary": "；".join(dedup_points[:4]) if dedup_points else "暂无可用检索结果。",
         "structured": structured,
     }
+    return notes
 
 
 _MULTI_SPACE = re.compile(r"\s+")

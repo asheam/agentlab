@@ -6,6 +6,7 @@ from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
 from agentlab.models.base import BaseModel, LLMMessage
+from agentlab.workspace.research_workspace import write_plan
 
 
 class PlannerAgent(Agent):
@@ -29,7 +30,7 @@ class PlannerAgent(Agent):
             plan = _build_plan(topic)
 
         if context.blackboard is not None:
-            context.blackboard.write("plan", plan, author=self.name)
+            write_plan(context.blackboard, plan=plan, author=self.name)
 
         return Message(
             sender=self.name,

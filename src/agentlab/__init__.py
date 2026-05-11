@@ -1,7 +1,7 @@
-﻿from agentlab.multi_agent.supervisor import build_default_supervisor
+from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supervisor
 
 
-__all__ = ["build_default_supervisor"]
+__all__ = ["build_default_supervisor", "SupervisorConfig"]
 
 
 def main() -> None:

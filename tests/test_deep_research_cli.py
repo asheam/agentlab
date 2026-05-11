@@ -1,29 +1,15 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
 from urllib.error import URLError
 
 import pytest
 
-from agentlab.multi_agent.supervisor import build_default_supervisor
-
-
-def _load_example_module():
-    file_path = Path(__file__).resolve().parents[1] / "examples" / "04_deep_research.py"
-    spec = importlib.util.spec_from_file_location("example_deep_research", file_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Failed to load examples/04_deep_research.py")
-
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+from agentlab.cli import main, parse_args
+from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supervisor
 
 
 def test_parse_args_defaults() -> None:
-    module = _load_example_module()
-
-    args = module.parse_args([])
+    args = parse_args([])
 
     assert args.use_openai is False
     assert args.output_dir == "outputs"
@@ -35,9 +21,7 @@ def test_parse_args_defaults() -> None:
 
 
 def test_parse_args_openai_and_output_dir() -> None:
-    module = _load_example_module()
-
-    args = module.parse_args(
+    args = parse_args(
         [
             "测试主题",
             "--use-openai",
@@ -63,9 +47,7 @@ def test_parse_args_openai_and_output_dir() -> None:
 
 
 def test_main_runs_with_mock_mode(tmp_path) -> None:
-    module = _load_example_module()
-
-    exit_code = module.main(["测试主题", "--output-dir", str(tmp_path)])
+    exit_code = main(["测试主题", "--output-dir", str(tmp_path)])
 
     assert exit_code == 0
     assert (tmp_path / "report.md").exists()
@@ -83,8 +65,10 @@ def test_supervisor_openai_mode_failure_still_exports_artifacts(monkeypatch, tmp
     monkeypatch.chdir(tmp_path)
 
     supervisor = build_default_supervisor(
-        output_dir=tmp_path / "out",
-        use_openai_model=True,
+        config=SupervisorConfig(
+            output_dir=tmp_path / "out",
+            use_openai_model=True,
+        )
     )
 
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
@@ -107,9 +91,11 @@ def test_supervisor_real_search_strict_mode_exports_artifacts_on_failure(
     monkeypatch.chdir(tmp_path)
 
     supervisor = build_default_supervisor(
-        output_dir=tmp_path / "strict_out",
-        search_mode="real",
-        allow_search_fallback=False,
+        config=SupervisorConfig(
+            output_dir=tmp_path / "strict_out",
+            search_mode="real",
+            allow_search_fallback=False,
+        )
     )
 
     with pytest.raises(RuntimeError, match="duckduckgo_error|wikipedia_error"):

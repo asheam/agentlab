@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from time import perf_counter
-from typing import Any
 
 from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.event import Event
 from agentlab.core.message import Message
 from agentlab.models.base import BaseModel
+from agentlab.workspace.research_workspace import (
+    SearchResultItem,
+    read_plan,
+    write_search_results,
+)
 
 
 class SearchAgent(Agent):
@@ -36,17 +40,15 @@ class SearchAgent(Agent):
         if context.tool_registry is None:
             raise RuntimeError("tool_registry is required for SearchAgent")
 
-        plan = context.blackboard.read("plan", [])
-        if not isinstance(plan, list):
-            plan = []
+        plan = read_plan(context.blackboard)
         topic = message.metadata.get("topic", "") if isinstance(message.metadata, dict) else ""
         if not isinstance(topic, str):
             topic = ""
 
-        search_results: list[dict[str, Any]] = []
+        search_results: list[SearchResultItem] = []
         tool_errors: list[str] = []
         for question in plan:
-            query = f"{topic} {question}".strip() if topic else str(question)
+            query = f"{topic} {question}".strip() if topic else question
             start = perf_counter()
             try:
                 result = context.tool_registry.call(self.tool_name, {"query": query})
@@ -66,9 +68,9 @@ class SearchAgent(Agent):
                     )
             except Exception as exc:
                 elapsed_ms = (perf_counter() - start) * 1000
-                error_result = {"question": question, "error": str(exc)}
-                search_results.append(error_result)
-                tool_errors.append(str(exc))
+                error_text = str(exc)
+                search_results.append({"question": question, "error": error_text})
+                tool_errors.append(error_text)
                 if context.trace_recorder is not None:
                     context.trace_recorder.record(
                         Event(
@@ -79,11 +81,11 @@ class SearchAgent(Agent):
                             tool_result=None,
                             latency_ms=elapsed_ms,
                             success=False,
-                            error=str(exc),
+                            error=error_text,
                         )
                     )
 
-        context.blackboard.write("search_results", search_results, author=self.name)
+        write_search_results(context.blackboard, search_results=search_results, author=self.name)
         if tool_errors and self.fail_on_tool_error:
             raise RuntimeError(tool_errors[0])
 

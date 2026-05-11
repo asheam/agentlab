@@ -8,6 +8,16 @@ from agentlab.core.context import RuntimeContext
 from agentlab.core.event import Event
 from agentlab.core.message import Message
 from agentlab.models.base import BaseModel, LLMMessage
+from agentlab.workspace.research_workspace import (
+    CritiquePayload,
+    NotesPayload,
+    SearchResultItem,
+    read_critique,
+    read_notes,
+    read_plan,
+    read_search_results,
+    write_report,
+)
 
 
 class WriterAgent(Agent):
@@ -31,10 +41,10 @@ class WriterAgent(Agent):
         if not isinstance(topic, str) or not topic.strip():
             topic = message.content.strip() or "Untitled Topic"
 
-        plan = context.blackboard.read("plan", [])
-        search_results = context.blackboard.read("search_results", [])
-        notes = context.blackboard.read("notes", {})
-        critique = context.blackboard.read("critique", {})
+        plan = read_plan(context.blackboard)
+        search_results = read_search_results(context.blackboard)
+        notes = read_notes(context.blackboard)
+        critique = read_critique(context.blackboard)
 
         report = _build_report(topic, plan, search_results, notes, critique)
         if self.model is not None:
@@ -66,7 +76,7 @@ class WriterAgent(Agent):
                     output_text="fallback to template report",
                 )
 
-        context.blackboard.write("report", report, author=self.name)
+        write_report(context.blackboard, report=report, author=self.name)
 
         if context.artifacts is not None:
             context.artifacts.save_text("report.md", report)
@@ -82,15 +92,15 @@ class WriterAgent(Agent):
 
 def _build_report(
     topic: str,
-    plan: Any,
-    search_results: Any,
-    notes: Any,
-    critique: Any,
+    plan: list[str],
+    search_results: list[SearchResultItem],
+    notes: NotesPayload,
+    critique: CritiquePayload,
 ) -> str:
-    key_points = notes.get("key_points", []) if isinstance(notes, dict) else []
-    references = notes.get("references", []) if isinstance(notes, dict) else []
-    summary_text = notes.get("summary", "") if isinstance(notes, dict) else ""
-    verdict = critique.get("verdict", "unknown") if isinstance(critique, dict) else "unknown"
+    key_points = notes.get("key_points", [])
+    references = notes.get("references", [])
+    summary_text = notes.get("summary", "")
+    verdict = critique.get("verdict", "unknown")
     summary = _summarize_search_modes(search_results)
 
     lines: list[str] = []
@@ -112,7 +122,7 @@ def _build_report(
     lines.append("")
 
     lines.append("## Research Questions")
-    if isinstance(plan, list) and plan:
+    if plan:
         for idx, item in enumerate(plan, start=1):
             lines.append(f"{idx}. {item}")
     else:
@@ -140,7 +150,7 @@ def _build_report(
     lines.append("")
 
     lines.append("## Key Findings")
-    if isinstance(key_points, list) and key_points:
+    if key_points:
         for point in key_points[:10]:
             lines.append(f"- {_truncate_text(str(point), max_chars=260)}")
     else:
@@ -169,53 +179,50 @@ def _build_report(
     lines.append("")
 
     lines.append("## Critique")
-    if isinstance(critique, dict):
-        mode = critique.get("assessment_mode")
-        if isinstance(mode, str):
-            lines.append(f"- Assessment mode: {mode}")
-        for strength in critique.get("strengths", []):
-            lines.append(f"- Strength: {strength}")
-        for gap in critique.get("gaps", []):
-            lines.append(f"- Gap: {gap}")
-        scores = critique.get("scores", {})
-        if isinstance(scores, dict):
-            overall = scores.get("overall", "n/a")
-            coverage = scores.get("coverage", "n/a")
-            evidence = scores.get("evidence", "n/a")
-            specificity = scores.get("specificity", "n/a")
-            balance = scores.get("balance", "n/a")
-            reasoning_depth = scores.get("reasoning_depth", "n/a")
-            dimension_coverage = scores.get("dimension_coverage", "n/a")
-            lines.append(
-                "- Scores: "
-                f"overall={overall}, coverage={coverage}, evidence={evidence}, "
-                f"specificity={specificity}, balance={balance}, "
-                f"reasoning_depth={reasoning_depth}, dimension_coverage={dimension_coverage}"
-            )
-        stats = critique.get("stats", {})
-        if isinstance(stats, dict):
-            comparative = stats.get("comparative_points_count", "n/a")
-            limitation = stats.get("limitation_points_count", "n/a")
-            actionable = stats.get("actionable_points_count", "n/a")
-            domains = stats.get("source_domains_count", "n/a")
-            dimensions = stats.get("dimensions_covered_count", "n/a")
-            lines.append(
-                "- Signals: "
-                f"comparative_points={comparative}, limitation_points={limitation}, "
-                f"actionable_points={actionable}, source_domains={domains}, "
-                f"dimensions_covered={dimensions}"
-            )
-        recommendations = critique.get("recommendations", [])
-        if isinstance(recommendations, list):
-            for rec in recommendations[:4]:
-                lines.append(f"- Recommendation: {rec}")
-        lines.append(f"- Verdict: {critique.get('verdict', 'unknown')}")
-    else:
-        lines.append("- 无评审信息")
+    mode = critique.get("assessment_mode")
+    if isinstance(mode, str):
+        lines.append(f"- Assessment mode: {mode}")
+    for strength in critique.get("strengths", []):
+        lines.append(f"- Strength: {strength}")
+    for gap in critique.get("gaps", []):
+        lines.append(f"- Gap: {gap}")
+    scores = critique.get("scores", {})
+    if isinstance(scores, dict):
+        overall = scores.get("overall", "n/a")
+        coverage = scores.get("coverage", "n/a")
+        evidence = scores.get("evidence", "n/a")
+        specificity = scores.get("specificity", "n/a")
+        balance = scores.get("balance", "n/a")
+        reasoning_depth = scores.get("reasoning_depth", "n/a")
+        dimension_coverage = scores.get("dimension_coverage", "n/a")
+        lines.append(
+            "- Scores: "
+            f"overall={overall}, coverage={coverage}, evidence={evidence}, "
+            f"specificity={specificity}, balance={balance}, "
+            f"reasoning_depth={reasoning_depth}, dimension_coverage={dimension_coverage}"
+        )
+    stats = critique.get("stats", {})
+    if isinstance(stats, dict):
+        comparative = stats.get("comparative_points_count", "n/a")
+        limitation = stats.get("limitation_points_count", "n/a")
+        actionable = stats.get("actionable_points_count", "n/a")
+        domains = stats.get("source_domains_count", "n/a")
+        dimensions = stats.get("dimensions_covered_count", "n/a")
+        lines.append(
+            "- Signals: "
+            f"comparative_points={comparative}, limitation_points={limitation}, "
+            f"actionable_points={actionable}, source_domains={domains}, "
+            f"dimensions_covered={dimensions}"
+        )
+    recommendations = critique.get("recommendations", [])
+    if isinstance(recommendations, list):
+        for rec in recommendations[:4]:
+            lines.append(f"- Recommendation: {rec}")
+    lines.append(f"- Verdict: {critique.get('verdict', 'unknown')}")
     lines.append("")
 
     lines.append("## References")
-    if isinstance(references, list) and references:
+    if references:
         for ref in references[:12]:
             lines.append(f"- {_format_reference(ref)}")
     else:

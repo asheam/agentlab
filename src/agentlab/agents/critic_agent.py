@@ -2,7 +2,7 @@
 
 import json
 import re
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 from agentlab.agents.research_dimensions import CONTENT_DIMENSION_KEYWORDS, DIMENSIONS
@@ -13,6 +13,11 @@ from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
 from agentlab.models.base import BaseModel, LLMMessage
+from agentlab.workspace.research_workspace import (
+    CritiquePayload,
+    read_notes,
+    write_critique,
+)
 
 
 CriticMode = Literal["auto", "rule", "llm"]
@@ -38,7 +43,7 @@ class CriticAgent(Agent):
         if context.blackboard is None:
             raise RuntimeError("blackboard is required for CriticAgent")
 
-        notes = context.blackboard.read("notes", {})
+        notes = read_notes(context.blackboard)
         rule_critique = _build_critique(notes)
 
         critique = rule_critique
@@ -61,7 +66,11 @@ class CriticAgent(Agent):
         if model_fallback_reason:
             critique["model_fallback_reason"] = model_fallback_reason
 
-        context.blackboard.write("critique", critique, author=self.name)
+        write_critique(
+            context.blackboard,
+            critique=cast(CritiquePayload, critique),
+            author=self.name,
+        )
         return Message(
             sender=self.name,
             receiver=message.sender,

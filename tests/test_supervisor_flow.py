@@ -1,10 +1,10 @@
-﻿import json
+import json
 
-from agentlab.multi_agent.supervisor import build_default_supervisor
+from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supervisor
 
 
 def test_supervisor_generates_outputs(tmp_path) -> None:
-    supervisor = build_default_supervisor(output_dir=tmp_path)
+    supervisor = build_default_supervisor(config=SupervisorConfig(output_dir=tmp_path))
 
     result = supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
 
@@ -33,7 +33,7 @@ def test_supervisor_generates_outputs(tmp_path) -> None:
 
 
 def test_supervisor_report_contains_framework_comparison(tmp_path) -> None:
-    supervisor = build_default_supervisor(output_dir=tmp_path)
+    supervisor = build_default_supervisor(config=SupervisorConfig(output_dir=tmp_path))
 
     result = supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
     report_text = result.report_path.read_text(encoding="utf-8")
