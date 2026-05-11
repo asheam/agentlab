@@ -1,5 +1,6 @@
 from agentlab.multi_agent.scheduler import AgentName, FixedOrderScheduler, Scheduler
 from agentlab.multi_agent.supervisor import (
+    RunPolicy,
     Supervisor,
     SupervisorConfig,
     SupervisorOutput,
@@ -14,6 +15,7 @@ __all__ = [
     "FixedOrderScheduler",
     "Scheduler",
     "AgentTeam",
+    "RunPolicy",
     "Supervisor",
     "SupervisorConfig",
     "SupervisorOutput",

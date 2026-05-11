@@ -15,11 +15,12 @@ def test_build_default_supervisor_supports_config_object(tmp_path) -> None:
     config = SupervisorConfig(output_dir=tmp_path)
     supervisor = build_default_supervisor(config=config)
 
-    outputs = supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
+    outputs = supervisor.run("Research LangGraph AutoGen CrewAI differences")
 
     assert outputs.report_path.exists()
     assert outputs.trace_path.exists()
     assert outputs.workspace_path.exists()
+    assert outputs.summary_path.exists()
 
 
 def test_build_default_supervisor_legacy_kwargs_emit_deprecation_warning(tmp_path) -> None:

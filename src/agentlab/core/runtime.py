@@ -62,6 +62,7 @@ class AgentRuntime:
                         "sender": message.sender,
                         "message_type": message.type,
                         "missing_services": sorted(missing_services),
+                        "message_metadata": dict(message.metadata),
                     },
                 )
             )
@@ -85,7 +86,11 @@ class AgentRuntime:
                     output=response.content,
                     latency_ms=latency_ms,
                     success=True,
-                    metadata={"sender": message.sender, "message_type": message.type},
+                    metadata={
+                        "sender": message.sender,
+                        "message_type": message.type,
+                        "message_metadata": dict(message.metadata),
+                    },
                 )
             )
             return response
@@ -101,7 +106,11 @@ class AgentRuntime:
                     latency_ms=latency_ms,
                     success=False,
                     error=str(exc),
-                    metadata={"sender": message.sender, "message_type": message.type},
+                    metadata={
+                        "sender": message.sender,
+                        "message_type": message.type,
+                        "message_metadata": dict(message.metadata),
+                    },
                 )
             )
             return Message(
@@ -129,7 +138,11 @@ class AgentRuntime:
                 latency_ms=0.0,
                 success=False,
                 error=error_message.content,
-                metadata={"sender": message.sender, "message_type": message.type},
+                metadata={
+                    "sender": message.sender,
+                    "message_type": message.type,
+                    "message_metadata": dict(message.metadata),
+                },
             )
         )
         return error_message

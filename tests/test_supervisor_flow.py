@@ -6,15 +6,17 @@ from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supe
 def test_supervisor_generates_outputs(tmp_path) -> None:
     supervisor = build_default_supervisor(config=SupervisorConfig(output_dir=tmp_path))
 
-    result = supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
+    result = supervisor.run("Research LangGraph AutoGen CrewAI differences")
 
     report_path = result.report_path
     trace_path = result.trace_path
     workspace_path = result.workspace_path
+    summary_path = result.summary_path
 
     assert report_path.exists()
     assert trace_path.exists()
     assert workspace_path.exists()
+    assert summary_path.exists()
 
     report_text = report_path.read_text(encoding="utf-8")
     assert "# Deep Research Report" in report_text
@@ -31,11 +33,15 @@ def test_supervisor_generates_outputs(tmp_path) -> None:
     for key in ["plan", "search_results", "notes", "critique", "report"]:
         assert key in workspace_payload
 
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert "total_events" in summary_payload
+    assert "agent_stats" in summary_payload
+
 
 def test_supervisor_report_contains_framework_comparison(tmp_path) -> None:
     supervisor = build_default_supervisor(config=SupervisorConfig(output_dir=tmp_path))
 
-    result = supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
+    result = supervisor.run("Research LangGraph AutoGen CrewAI differences")
     report_text = result.report_path.read_text(encoding="utf-8")
     workspace_payload = json.loads(result.workspace_path.read_text(encoding="utf-8"))
 

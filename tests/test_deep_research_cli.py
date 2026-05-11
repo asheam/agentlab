@@ -23,7 +23,7 @@ def test_parse_args_defaults() -> None:
 def test_parse_args_openai_and_output_dir() -> None:
     args = parse_args(
         [
-            "测试主题",
+            "test topic",
             "--use-openai",
             "--output-dir",
             "tmp_out",
@@ -37,7 +37,7 @@ def test_parse_args_openai_and_output_dir() -> None:
         ]
     )
 
-    assert args.topic == "测试主题"
+    assert args.topic == "test topic"
     assert args.use_openai is True
     assert args.output_dir == "tmp_out"
     assert args.search_mode == "real"
@@ -47,12 +47,13 @@ def test_parse_args_openai_and_output_dir() -> None:
 
 
 def test_main_runs_with_mock_mode(tmp_path) -> None:
-    exit_code = main(["测试主题", "--output-dir", str(tmp_path)])
+    exit_code = main(["test topic", "--output-dir", str(tmp_path)])
 
     assert exit_code == 0
     assert (tmp_path / "report.md").exists()
     assert (tmp_path / "trace.json").exists()
     assert (tmp_path / "workspace.json").exists()
+    assert (tmp_path / "run_summary.json").exists()
 
 
 def test_supervisor_openai_mode_failure_still_exports_artifacts(monkeypatch, tmp_path) -> None:
@@ -72,11 +73,12 @@ def test_supervisor_openai_mode_failure_still_exports_artifacts(monkeypatch, tmp
     )
 
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
-        supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
+        supervisor.run("Research LangGraph AutoGen CrewAI differences")
 
     assert (tmp_path / "out" / "report.md").exists()
     assert (tmp_path / "out" / "trace.json").exists()
     assert (tmp_path / "out" / "workspace.json").exists()
+    assert (tmp_path / "out" / "run_summary.json").exists()
 
 
 def test_supervisor_real_search_strict_mode_exports_artifacts_on_failure(
@@ -99,8 +101,9 @@ def test_supervisor_real_search_strict_mode_exports_artifacts_on_failure(
     )
 
     with pytest.raises(RuntimeError, match="duckduckgo_error|wikipedia_error"):
-        supervisor.run("研究 LangGraph、AutoGen、CrewAI 的区别")
+        supervisor.run("Research LangGraph AutoGen CrewAI differences")
 
     assert (tmp_path / "strict_out" / "report.md").exists()
     assert (tmp_path / "strict_out" / "trace.json").exists()
     assert (tmp_path / "strict_out" / "workspace.json").exists()
+    assert (tmp_path / "strict_out" / "run_summary.json").exists()

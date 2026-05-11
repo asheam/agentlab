@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Literal
 import warnings
+from dataclasses import dataclass, field
+from pathlib import Path
+from time import perf_counter
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -15,6 +16,7 @@ from agentlab.agents import (
     WriterAgent,
 )
 from agentlab.core.agent import Agent
+from agentlab.core.event import Event
 from agentlab.core.message import Message
 from agentlab.core.runtime import AgentRuntime
 from agentlab.models.base import BaseModel
@@ -31,6 +33,19 @@ from agentlab.workspace.research_workspace import read_report
 
 
 @dataclass(frozen=True)
+class RunPolicy:
+    max_retries: int = 0
+    agent_timeout_s: float | None = None
+    continue_on_error: bool = False
+
+    def __post_init__(self) -> None:
+        if self.max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
+        if self.agent_timeout_s is not None and self.agent_timeout_s <= 0:
+            raise ValueError("agent_timeout_s must be > 0 when provided")
+
+
+@dataclass(frozen=True)
 class SupervisorConfig:
     output_dir: str | Path = "outputs"
     use_openai_model: bool = False
@@ -38,6 +53,7 @@ class SupervisorConfig:
     allow_search_fallback: bool = True
     search_providers: list[str] | tuple[str, ...] | None = None
     critic_mode: Literal["auto", "rule", "llm"] = "auto"
+    run_policy: RunPolicy = field(default_factory=RunPolicy)
 
 
 @dataclass(frozen=True)
@@ -45,19 +61,27 @@ class SupervisorOutput:
     report_path: Path
     trace_path: Path
     workspace_path: Path
+    summary_path: Path
 
     def items(self) -> list[tuple[str, Path]]:
         return [
             ("report_path", self.report_path),
             ("trace_path", self.trace_path),
             ("workspace_path", self.workspace_path),
+            ("summary_path", self.summary_path),
         ]
 
 
 class Supervisor:
-    def __init__(self, runtime: AgentRuntime, scheduler: Scheduler | None = None) -> None:
+    def __init__(
+        self,
+        runtime: AgentRuntime,
+        scheduler: Scheduler | None = None,
+        run_policy: RunPolicy | None = None,
+    ) -> None:
         self.runtime = runtime
         self.scheduler = scheduler or FixedOrderScheduler()
+        self.run_policy = run_policy or RunPolicy()
 
     def run(self, topic: str) -> SupervisorOutput:
         sender = "supervisor"
@@ -65,18 +89,17 @@ class Supervisor:
         run_error: RuntimeError | None = None
 
         for agent_name in self.scheduler.get_order():
-            request = Message(
+            latest_response = self._execute_agent_with_policy(
+                agent_name=agent_name,
                 sender=sender,
-                receiver=agent_name,
-                content=_instruction_for(agent_name, topic),
-                type="task",
-                metadata={"topic": topic},
+                topic=topic,
             )
-            latest_response = self.runtime.send(request)
             if latest_response.type == "error":
-                run_error = RuntimeError(latest_response.content)
-                break
-            sender = agent_name
+                if not self.run_policy.continue_on_error:
+                    run_error = RuntimeError(latest_response.content)
+                    break
+            else:
+                sender = agent_name
 
         report = read_report(self.runtime.blackboard)
         if not report and latest_response is not None:
@@ -91,15 +114,130 @@ class Supervisor:
         workspace_path = self.runtime.blackboard.export_json(
             self.runtime.artifacts.base_dir / "workspace.json"
         )
+        summary_path = self.runtime.trace_recorder.export_summary_json(
+            self.runtime.artifacts.base_dir / "run_summary.json"
+        )
 
         outputs = SupervisorOutput(
             report_path=report_path,
             trace_path=trace_path,
             workspace_path=workspace_path,
+            summary_path=summary_path,
         )
         if run_error is not None:
             raise run_error
         return outputs
+
+    def _execute_agent_with_policy(self, agent_name: AgentName, sender: str, topic: str) -> Message:
+        max_attempts = self.run_policy.max_retries + 1
+        last_error: Message | None = None
+        for attempt in range(1, max_attempts + 1):
+            request = Message(
+                sender=sender,
+                receiver=agent_name,
+                content=_instruction_for(agent_name, topic),
+                type="task",
+                metadata={"topic": topic, "attempt": attempt, "max_attempts": max_attempts},
+            )
+
+            started = perf_counter()
+            response = self.runtime.send(request)
+            elapsed_s = perf_counter() - started
+
+            timeout_s = self.run_policy.agent_timeout_s
+            if timeout_s is not None and elapsed_s > timeout_s:
+                # Soft timeout: runtime call already returned, so partial side effects may exist.
+                # Current retry behavior relies on overwrite semantics in workspace writes.
+                timeout_error = (
+                    f"Agent '{agent_name}' timed out: elapsed={elapsed_s:.3f}s > "
+                    f"timeout={timeout_s:.3f}s (attempt {attempt}/{max_attempts})"
+                )
+                self._record_supervisor_event(
+                    agent_name=agent_name,
+                    success=False,
+                    output=timeout_error,
+                    error=timeout_error,
+                    metadata={
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "reason": "timeout",
+                        "elapsed_s": round(elapsed_s, 6),
+                        "timeout_s": timeout_s,
+                    },
+                )
+                last_error = Message(
+                    sender="supervisor",
+                    receiver=sender,
+                    content=timeout_error,
+                    type="error",
+                    metadata={
+                        "failed_agent": agent_name,
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "elapsed_s": elapsed_s,
+                        "timeout_s": timeout_s,
+                    },
+                )
+            elif response.type == "error":
+                self._record_supervisor_event(
+                    agent_name=agent_name,
+                    success=False,
+                    output=response.content,
+                    error=response.content,
+                    metadata={
+                        "attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "reason": "runtime_error",
+                    },
+                )
+                last_error = response
+            else:
+                if attempt > 1:
+                    self._record_supervisor_event(
+                        agent_name=agent_name,
+                        success=True,
+                        output=response.content,
+                        error=None,
+                        metadata={
+                            "attempt": attempt,
+                            "max_attempts": max_attempts,
+                            "reason": "retry_recovered",
+                        },
+                    )
+                return response
+
+            if attempt < max_attempts:
+                continue
+
+        assert last_error is not None
+        if self.run_policy.continue_on_error:
+            self._record_supervisor_event(
+                agent_name=agent_name,
+                success=False,
+                output=last_error.content,
+                error=last_error.content,
+                metadata={"reason": "continue_on_error"},
+            )
+        return last_error
+
+    def _record_supervisor_event(
+        self,
+        agent_name: AgentName,
+        success: bool,
+        output: str,
+        error: str | None,
+        metadata: dict[str, object],
+    ) -> None:
+        self.runtime.trace_recorder.record(
+            Event(
+                event_type="agent_call",
+                agent=agent_name,
+                output=output,
+                success=success,
+                error=error,
+                metadata={"emitter": "supervisor", **metadata},
+            )
+        )
 
 
 def _build_error_report(topic: str, error: str) -> str:
@@ -187,7 +325,11 @@ def build_default_supervisor(
 
     team = AgentTeam(runtime)
     team.add_many(build_default_agents(model=model, config=effective_config))
-    return Supervisor(runtime=runtime, scheduler=FixedOrderScheduler())
+    return Supervisor(
+        runtime=runtime,
+        scheduler=FixedOrderScheduler(),
+        run_policy=effective_config.run_policy,
+    )
 
 
 def _legacy_config_changed_from_defaults(config: SupervisorConfig) -> bool:

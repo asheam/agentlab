@@ -18,3 +18,7 @@ def export_events_json(events: Sequence[Event], path: str | Path) -> Path:
 
 def export_trace_json(recorder: TraceRecorder, path: str | Path) -> Path:
     return recorder.export_json(path)
+
+
+def export_trace_summary_json(recorder: TraceRecorder, path: str | Path) -> Path:
+    return recorder.export_summary_json(path)

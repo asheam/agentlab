@@ -25,3 +25,34 @@ def test_trace_recorder_export_json(tmp_path) -> None:
     assert out_path.exists()
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["events"][0]["tool_name"] == "calculator"
+
+
+def test_trace_recorder_summary_and_export(tmp_path) -> None:
+    recorder = TraceRecorder()
+    recorder.record(
+        Event(event_type="agent_call", agent="planner", success=True, latency_ms=10.0)
+    )
+    recorder.record(
+        Event(
+            event_type="tool_call",
+            agent="searcher",
+            tool_name="web_search",
+            success=False,
+            latency_ms=25.0,
+            error="network error",
+        )
+    )
+
+    summary = recorder.to_summary_dict()
+    assert summary["total_events"] == 2
+    assert summary["failed_events"] == 1
+    assert summary["event_type_counts"]["agent_call"] == 1
+    assert summary["event_type_counts"]["tool_call"] == 1
+    assert summary["agent_stats"]["planner"]["events"] == 1
+    assert summary["tool_stats"]["web_search"]["calls"] == 1
+
+    out_path = tmp_path / "run_summary.json"
+    recorder.export_summary_json(out_path)
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
+    assert payload["total_events"] == 2
+    assert "latency" in payload
