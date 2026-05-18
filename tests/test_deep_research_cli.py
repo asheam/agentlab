@@ -11,15 +11,16 @@ from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supe
 def test_parse_args_defaults() -> None:
     args = parse_args([])
 
+    assert args.config is None
     assert args.use_openai is False
-    assert args.output_dir == "outputs"
-    assert args.search_mode == "mock"
+    assert args.output_dir is None
+    assert args.search_mode is None
     assert args.no_search_fallback is False
-    assert args.search_providers == "duckduckgo,wikipedia,tavily"
-    assert args.critic_mode == "auto"
-    assert args.strategy_preset == "default"
+    assert args.search_providers is None
+    assert args.critic_mode is None
+    assert args.strategy_preset is None
     assert args.list_strategy_presets is False
-    assert "LangGraph" in args.topic
+    assert args.topic is None
 
 
 def test_parse_args_openai_and_output_dir() -> None:
@@ -51,6 +52,69 @@ def test_parse_args_openai_and_output_dir() -> None:
     assert args.critic_mode == "llm"
     assert args.strategy_preset == "concise"
     assert args.list_strategy_presets is True
+
+
+def test_main_supports_yaml_config_file(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "agentlab.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "topic: config topic",
+                "output_dir: out_from_config",
+                "search_mode: mock",
+                "search_providers:",
+                "  - duckduckgo",
+                "  - wikipedia",
+                "critic_mode: rule",
+                "strategy_preset: concise",
+                "no_search_fallback: false",
+                "use_openai: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(["--config", str(config_path)])
+
+    assert exit_code == 0
+    assert (tmp_path / "out_from_config" / "report.md").exists()
+    assert (tmp_path / "out_from_config" / "trace.json").exists()
+    assert (tmp_path / "out_from_config" / "workspace.json").exists()
+    assert (tmp_path / "out_from_config" / "run_summary.json").exists()
+
+
+def test_main_cli_args_override_yaml_config(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "agentlab.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "topic: config topic",
+                "output_dir: out_from_config",
+                "strategy_preset: default",
+                "search_mode: mock",
+                "critic_mode: auto",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = main(
+        [
+            "cli topic",
+            "--config",
+            str(config_path),
+            "--output-dir",
+            "out_from_cli",
+            "--strategy-preset",
+            "concise",
+        ]
+    )
+
+    assert exit_code == 0
+    assert (tmp_path / "out_from_cli" / "report.md").exists()
+    assert not (tmp_path / "out_from_config" / "report.md").exists()
 
 
 def test_main_runs_with_mock_mode(tmp_path) -> None:
@@ -99,6 +163,14 @@ def test_main_lists_strategy_presets_and_exits(capsys, tmp_path) -> None:
     assert not (tmp_path / "trace.json").exists()
     assert not (tmp_path / "workspace.json").exists()
     assert not (tmp_path / "run_summary.json").exists()
+
+
+def test_main_returns_config_error_for_missing_file(capsys) -> None:
+    exit_code = main(["--config", "missing-agentlab.yaml"])
+
+    assert exit_code == 2
+    out = capsys.readouterr().out
+    assert "Config error:" in out
 
 
 def test_supervisor_openai_mode_failure_still_exports_artifacts(monkeypatch, tmp_path) -> None:

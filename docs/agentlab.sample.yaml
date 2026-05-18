@@ -1,0 +1,11 @@
+topic: 研究 LangGraph、AutoGen、CrewAI 的区别
+output_dir: outputs
+search_mode: mock
+search_providers:
+  - duckduckgo
+  - wikipedia
+  - tavily
+critic_mode: auto
+strategy_preset: default
+no_search_fallback: false
+use_openai: false

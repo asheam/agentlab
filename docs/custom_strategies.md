@@ -114,4 +114,10 @@ List available presets:
 uv run python examples/04_deep_research.py --list-strategy-presets
 ```
 
+Run with YAML config:
+
+```bash
+uv run python examples/04_deep_research.py --config docs/agentlab.sample.yaml
+```
+
 Outputs include `report.md`, `trace.json`, `workspace.json`, and `run_summary.json` under the chosen output directory.
