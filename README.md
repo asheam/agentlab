@@ -125,6 +125,12 @@ uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 
 uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --strategy-preset concise
 ```
 
+查看可用策略预设：
+
+```bash
+uv run python examples/04_deep_research.py --list-strategy-presets
+```
+
 自定义全链路策略示例（Planner/Search/Reader/Critic/Writer）：
 
 ```bash

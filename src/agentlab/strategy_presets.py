@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import replace
 from typing import Literal
@@ -17,6 +17,22 @@ from agentlab.workspace.research_workspace import NotesPayload
 
 
 StrategyPreset = Literal["default", "concise"]
+
+_PRESET_ITEMS: list[tuple[StrategyPreset, str]] = [
+    (
+        "default",
+        "Use built-in default agent behaviors without custom strategy injection.",
+    ),
+    (
+        "concise",
+        "Inject concise planner/search/reader/critic/writer strategies for compact outputs.",
+    ),
+]
+
+
+def iter_strategy_presets() -> list[tuple[StrategyPreset, str]]:
+    """Return available preset names and human-readable descriptions."""
+    return list(_PRESET_ITEMS)
 
 
 class ConcisePlannerStrategy:

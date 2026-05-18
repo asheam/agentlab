@@ -8,6 +8,7 @@ from agentlab.strategy_presets import (
     ConciseSearchStrategy,
     ConciseWriterStrategy,
     apply_strategy_preset,
+    iter_strategy_presets,
 )
 
 
@@ -34,3 +35,12 @@ def test_apply_concise_strategy_preset_injects_all_strategies() -> None:
     assert isinstance(applied.writer_strategy, ConciseWriterStrategy)
     assert applied.search_mode == "real"
     assert applied.critic_mode == "llm"
+
+
+def test_iter_strategy_presets_contains_default_and_concise() -> None:
+    items = iter_strategy_presets()
+    names = [name for name, _ in items]
+
+    assert names == ["default", "concise"]
+    assert "built-in default" in items[0][1]
+    assert "compact outputs" in items[1][1]

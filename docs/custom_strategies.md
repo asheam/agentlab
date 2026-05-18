@@ -108,4 +108,10 @@ You can also run the main CLI with a preset:
 uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --strategy-preset concise
 ```
 
+List available presets:
+
+```bash
+uv run python examples/04_deep_research.py --list-strategy-presets
+```
+
 Outputs include `report.md`, `trace.json`, `workspace.json`, and `run_summary.json` under the chosen output directory.

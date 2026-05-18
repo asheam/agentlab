@@ -18,6 +18,7 @@ def test_parse_args_defaults() -> None:
     assert args.search_providers == "duckduckgo,wikipedia,tavily"
     assert args.critic_mode == "auto"
     assert args.strategy_preset == "default"
+    assert args.list_strategy_presets is False
     assert "LangGraph" in args.topic
 
 
@@ -37,6 +38,7 @@ def test_parse_args_openai_and_output_dir() -> None:
             "llm",
             "--strategy-preset",
             "concise",
+            "--list-strategy-presets",
         ]
     )
 
@@ -48,6 +50,7 @@ def test_parse_args_openai_and_output_dir() -> None:
     assert args.search_providers == "tavily,duckduckgo"
     assert args.critic_mode == "llm"
     assert args.strategy_preset == "concise"
+    assert args.list_strategy_presets is True
 
 
 def test_main_runs_with_mock_mode(tmp_path) -> None:
@@ -76,6 +79,26 @@ def test_main_runs_with_concise_strategy_preset(tmp_path) -> None:
     assert (tmp_path / "trace.json").exists()
     assert (tmp_path / "workspace.json").exists()
     assert (tmp_path / "run_summary.json").exists()
+
+
+def test_main_lists_strategy_presets_and_exits(capsys, tmp_path) -> None:
+    exit_code = main(
+        [
+            "--list-strategy-presets",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Available strategy presets:" in out
+    assert "- default:" in out
+    assert "- concise:" in out
+    assert not (tmp_path / "report.md").exists()
+    assert not (tmp_path / "trace.json").exists()
+    assert not (tmp_path / "workspace.json").exists()
+    assert not (tmp_path / "run_summary.json").exists()
 
 
 def test_supervisor_openai_mode_failure_still_exports_artifacts(monkeypatch, tmp_path) -> None:

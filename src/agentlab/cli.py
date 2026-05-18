@@ -7,7 +7,11 @@ from agentlab.multi_agent.supervisor import (
     SupervisorConfig,
     build_default_supervisor,
 )
-from agentlab.strategy_presets import StrategyPreset, apply_strategy_preset
+from agentlab.strategy_presets import (
+    StrategyPreset,
+    apply_strategy_preset,
+    iter_strategy_presets,
+)
 
 
 DEFAULT_TOPIC = "研究 LangGraph、AutoGen、CrewAI 的区别"
@@ -57,11 +61,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="default",
         help="Optional strategy preset. 'concise' injects custom planner/search/reader/critic/writer strategies.",
     )
+    parser.add_argument(
+        "--list-strategy-presets",
+        action="store_true",
+        help="List available strategy presets and exit.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+
+    if args.list_strategy_presets:
+        print("Available strategy presets:")
+        for name, description in iter_strategy_presets():
+            print(f"- {name}: {description}")
+        return 0
+
     search_providers = [item.strip() for item in args.search_providers.split(",") if item.strip()]
     config = SupervisorConfig(
         output_dir=args.output_dir,
