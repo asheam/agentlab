@@ -102,4 +102,10 @@ uv run python examples/05_custom_strategies.py "研究 LangGraph、AutoGen、Cre
 
 This example injects all five strategy slots in one run.
 
+You can also run the main CLI with a preset:
+
+```bash
+uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --strategy-preset concise
+```
+
 Outputs include `report.md`, `trace.json`, `workspace.json`, and `run_summary.json` under the chosen output directory.

@@ -1,14 +1,17 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
+from typing import cast
 
 from agentlab.multi_agent.supervisor import (
     SupervisorConfig,
     build_default_supervisor,
 )
+from agentlab.strategy_presets import StrategyPreset, apply_strategy_preset
 
 
 DEFAULT_TOPIC = "研究 LangGraph、AutoGen、CrewAI 的区别"
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run AgentLab deep research demo.")
@@ -48,6 +51,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="auto",
         help="Critic strategy: auto tries LLM then falls back to rule, rule is deterministic only.",
     )
+    parser.add_argument(
+        "--strategy-preset",
+        choices=["default", "concise"],
+        default="default",
+        help="Optional strategy preset. 'concise' injects custom planner/search/reader/critic/writer strategies.",
+    )
     return parser.parse_args(argv)
 
 
@@ -62,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
         search_providers=search_providers,
         critic_mode=args.critic_mode,
     )
+    preset = cast(StrategyPreset, args.strategy_preset)
+    config = apply_strategy_preset(config, preset)
+
     supervisor = build_default_supervisor(config=config)
     outputs = supervisor.run(args.topic)
 

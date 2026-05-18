@@ -17,6 +17,7 @@ def test_parse_args_defaults() -> None:
     assert args.no_search_fallback is False
     assert args.search_providers == "duckduckgo,wikipedia,tavily"
     assert args.critic_mode == "auto"
+    assert args.strategy_preset == "default"
     assert "LangGraph" in args.topic
 
 
@@ -34,6 +35,8 @@ def test_parse_args_openai_and_output_dir() -> None:
             "tavily,duckduckgo",
             "--critic-mode",
             "llm",
+            "--strategy-preset",
+            "concise",
         ]
     )
 
@@ -44,10 +47,29 @@ def test_parse_args_openai_and_output_dir() -> None:
     assert args.no_search_fallback is True
     assert args.search_providers == "tavily,duckduckgo"
     assert args.critic_mode == "llm"
+    assert args.strategy_preset == "concise"
 
 
 def test_main_runs_with_mock_mode(tmp_path) -> None:
     exit_code = main(["test topic", "--output-dir", str(tmp_path)])
+
+    assert exit_code == 0
+    assert (tmp_path / "report.md").exists()
+    assert (tmp_path / "trace.json").exists()
+    assert (tmp_path / "workspace.json").exists()
+    assert (tmp_path / "run_summary.json").exists()
+
+
+def test_main_runs_with_concise_strategy_preset(tmp_path) -> None:
+    exit_code = main(
+        [
+            "test topic",
+            "--output-dir",
+            str(tmp_path),
+            "--strategy-preset",
+            "concise",
+        ]
+    )
 
     assert exit_code == 0
     assert (tmp_path / "report.md").exists()
