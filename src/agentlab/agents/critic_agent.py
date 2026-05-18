@@ -16,6 +16,11 @@ from agentlab.core.message import Message
 from agentlab.models.base import BaseModel, LLMMessage
 from agentlab.workspace.research_workspace import (
     CritiquePayload,
+    NotesPayload,
+    notes_dimension_points,
+    notes_key_points,
+    notes_references,
+    notes_summary,
     read_notes,
     write_critique,
 )
@@ -26,7 +31,7 @@ CriticMode = Literal["auto", "rule", "llm"]
 
 @dataclass(frozen=True)
 class CriticStrategyInput:
-    notes: Any
+    notes: NotesPayload
     model: BaseModel | None
     critic_mode: CriticMode
 
@@ -145,7 +150,7 @@ class _LLMCritique(PydanticBaseModel):
     recommendations: list[str] = Field(default_factory=list)
 
 
-def _build_critique(notes: Any) -> dict[str, Any]:
+def _build_critique(notes: NotesPayload) -> dict[str, Any]:
     summary, key_points, references = _extract_notes_fields(notes)
     corpus = " ".join(key_points + [summary]).lower()
     source_domains = _extract_source_domains(references)
@@ -252,7 +257,7 @@ def _build_critique(notes: Any) -> dict[str, Any]:
 
 
 def _build_critique_with_model(
-    notes: Any,
+    notes: NotesPayload,
     model: BaseModel | None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     if model is None:
@@ -342,24 +347,8 @@ def _extract_json_payload(text: str) -> dict[str, Any] | None:
     return None
 
 
-def _extract_notes_fields(notes: Any) -> tuple[str, list[str], list[str]]:
-    summary = ""
-    key_points: list[str] = []
-    references: list[str] = []
-    if not isinstance(notes, dict):
-        return summary, key_points, references
-
-    summary = str(notes.get("summary", ""))
-
-    raw_points = notes.get("key_points", [])
-    if isinstance(raw_points, list):
-        key_points = [str(item).strip() for item in raw_points if str(item).strip()]
-
-    raw_references = notes.get("references", [])
-    if isinstance(raw_references, list):
-        references = [str(item).strip() for item in raw_references if str(item).strip()]
-
-    return summary, key_points, references
+def _extract_notes_fields(notes: NotesPayload) -> tuple[str, list[str], list[str]]:
+    return notes_summary(notes), notes_key_points(notes), notes_references(notes)
 
 
 def _score_coverage(frameworks: list[str], missing_frameworks: list[str]) -> float:
@@ -584,26 +573,18 @@ _ACTIONABLE_KEYWORDS = [
 ]
 
 def _score_dimension_coverage(
-    notes: Any,
+    notes: NotesPayload,
     key_points: list[str],
 ) -> tuple[float, list[str], list[str]]:
     dimensions = list(DIMENSIONS)
     covered: set[str] = set()
 
-    if isinstance(notes, dict):
-        structured = notes.get("structured")
-        if isinstance(structured, dict):
-            dimension_node = structured.get("dimensions")
-            if isinstance(dimension_node, dict):
-                for dimension in dimensions:
-                    node = dimension_node.get(dimension)
-                    if not isinstance(node, dict):
-                        continue
-                    for framework in ("langgraph", "autogen", "crewai", "common"):
-                        entries = node.get(framework, [])
-                        if isinstance(entries, list) and any(str(item).strip() for item in entries):
-                            covered.add(dimension)
-                            break
+    for dimension in dimensions:
+        for framework in ("langgraph", "autogen", "crewai", "common"):
+            entries = notes_dimension_points(notes, dimension, framework)
+            if entries:
+                covered.add(dimension)
+                break
 
     if not covered:
         covered = _infer_dimensions_from_points(key_points)

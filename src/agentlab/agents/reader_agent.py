@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from agentlab.agents.research_dimensions import (
     CONTENT_DIMENSION_KEYWORDS,
@@ -16,6 +16,9 @@ from agentlab.models.base import BaseModel
 from agentlab.workspace.research_workspace import (
     NotesPayload,
     SearchResultItem,
+    StructuredDimensionNode,
+    StructuredFrameworkNode,
+    StructuredNotesPayload,
     read_search_results,
     write_notes,
 )
@@ -252,24 +255,28 @@ def _build_structured_notes(
     structured_points: dict[str, list[str]],
     structured_references: dict[str, list[str]],
     structured_dimensions: dict[str, dict[str, list[str]]],
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
+) -> StructuredNotesPayload:
+    payload: StructuredNotesPayload = {}
     for key in ("langgraph", "autogen", "crewai", "common"):
         points = [point for point in structured_points.get(key, []) if point]
         refs = [ref for ref in structured_references.get(key, []) if ref]
-        payload[key] = {
+        payload[key] = cast(
+            StructuredFrameworkNode,
+            {
             "points": list(dict.fromkeys(points))[:8],
             "references": list(dict.fromkeys(refs))[:8],
-        }
+            },
+        )
 
-    dimension_payload: dict[str, dict[str, list[str]]] = {}
+    dimension_payload: dict[str, StructuredDimensionNode] = {}
     for dimension in DIMENSIONS:
         node = structured_dimensions.get(dimension, {})
-        dimension_payload[dimension] = {}
+        framework_payload: StructuredDimensionNode = {}
         for framework in ("langgraph", "autogen", "crewai", "common"):
             raw_points = node.get(framework, [])
             points = [point for point in raw_points if point]
-            dimension_payload[dimension][framework] = list(dict.fromkeys(points))[:6]
+            framework_payload[framework] = list(dict.fromkeys(points))[:6]
+        dimension_payload[dimension] = framework_payload
 
     payload["dimensions"] = dimension_payload
     return payload

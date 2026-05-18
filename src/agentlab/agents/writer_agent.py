@@ -13,10 +13,29 @@ from agentlab.workspace.research_workspace import (
     CritiquePayload,
     NotesPayload,
     SearchResultItem,
+    critique_assessment_mode,
+    critique_gaps,
+    critique_recommendations,
+    critique_scores,
+    critique_stats,
+    critique_strengths,
+    critique_verdict,
+    notes_dimension_points,
+    notes_framework_points,
+    notes_key_points,
+    notes_references,
+    notes_summary,
     read_critique,
     read_notes,
     read_plan,
     read_search_results,
+    search_result_error,
+    search_result_fallback_reason,
+    search_result_fallback_used,
+    search_result_issues,
+    search_result_mode,
+    search_result_payload,
+    search_result_source_hits,
     write_report,
 )
 
@@ -142,10 +161,10 @@ def _build_report(
     notes: NotesPayload,
     critique: CritiquePayload,
 ) -> str:
-    key_points = notes.get("key_points", [])
-    references = notes.get("references", [])
-    summary_text = notes.get("summary", "")
-    verdict = critique.get("verdict", "unknown")
+    key_points = notes_key_points(notes)
+    references = notes_references(notes)
+    summary_text = notes_summary(notes)
+    verdict = critique_verdict(critique)
     summary = _summarize_search_modes(search_results)
 
     lines: list[str] = []
@@ -224,46 +243,42 @@ def _build_report(
     lines.append("")
 
     lines.append("## Critique")
-    mode = critique.get("assessment_mode")
-    if isinstance(mode, str):
+    mode = critique_assessment_mode(critique)
+    if mode is not None:
         lines.append(f"- Assessment mode: {mode}")
-    for strength in critique.get("strengths", []):
+    for strength in critique_strengths(critique):
         lines.append(f"- Strength: {strength}")
-    for gap in critique.get("gaps", []):
+    for gap in critique_gaps(critique):
         lines.append(f"- Gap: {gap}")
-    scores = critique.get("scores", {})
-    if isinstance(scores, dict):
-        overall = scores.get("overall", "n/a")
-        coverage = scores.get("coverage", "n/a")
-        evidence = scores.get("evidence", "n/a")
-        specificity = scores.get("specificity", "n/a")
-        balance = scores.get("balance", "n/a")
-        reasoning_depth = scores.get("reasoning_depth", "n/a")
-        dimension_coverage = scores.get("dimension_coverage", "n/a")
-        lines.append(
-            "- Scores: "
-            f"overall={overall}, coverage={coverage}, evidence={evidence}, "
-            f"specificity={specificity}, balance={balance}, "
-            f"reasoning_depth={reasoning_depth}, dimension_coverage={dimension_coverage}"
-        )
-    stats = critique.get("stats", {})
-    if isinstance(stats, dict):
-        comparative = stats.get("comparative_points_count", "n/a")
-        limitation = stats.get("limitation_points_count", "n/a")
-        actionable = stats.get("actionable_points_count", "n/a")
-        domains = stats.get("source_domains_count", "n/a")
-        dimensions = stats.get("dimensions_covered_count", "n/a")
-        lines.append(
-            "- Signals: "
-            f"comparative_points={comparative}, limitation_points={limitation}, "
-            f"actionable_points={actionable}, source_domains={domains}, "
-            f"dimensions_covered={dimensions}"
-        )
-    recommendations = critique.get("recommendations", [])
-    if isinstance(recommendations, list):
-        for rec in recommendations[:4]:
-            lines.append(f"- Recommendation: {rec}")
-    lines.append(f"- Verdict: {critique.get('verdict', 'unknown')}")
+    scores = critique_scores(critique)
+    overall = scores.get("overall", "n/a")
+    coverage = scores.get("coverage", "n/a")
+    evidence = scores.get("evidence", "n/a")
+    specificity = scores.get("specificity", "n/a")
+    balance = scores.get("balance", "n/a")
+    reasoning_depth = scores.get("reasoning_depth", "n/a")
+    dimension_coverage = scores.get("dimension_coverage", "n/a")
+    lines.append(
+        "- Scores: "
+        f"overall={overall}, coverage={coverage}, evidence={evidence}, "
+        f"specificity={specificity}, balance={balance}, "
+        f"reasoning_depth={reasoning_depth}, dimension_coverage={dimension_coverage}"
+    )
+    stats = critique_stats(critique)
+    comparative = stats.get("comparative_points_count", "n/a")
+    limitation = stats.get("limitation_points_count", "n/a")
+    actionable = stats.get("actionable_points_count", "n/a")
+    domains = stats.get("source_domains_count", "n/a")
+    dimensions = stats.get("dimensions_covered_count", "n/a")
+    lines.append(
+        "- Signals: "
+        f"comparative_points={comparative}, limitation_points={limitation}, "
+        f"actionable_points={actionable}, source_domains={domains}, "
+        f"dimensions_covered={dimensions}"
+    )
+    for rec in critique_recommendations(critique)[:4]:
+        lines.append(f"- Recommendation: {rec}")
+    lines.append(f"- Verdict: {verdict}")
     lines.append("")
 
     lines.append("## References")
@@ -302,7 +317,7 @@ def _format_reference(reference: Any) -> str:
     return text
 
 
-def _framework_snapshot(notes: Any, key_points: Any) -> list[tuple[str, str]]:
+def _framework_snapshot(notes: NotesPayload, key_points: list[str]) -> list[tuple[str, str]]:
     framework_points = _framework_points_for_matrix(notes, key_points)
     snapshots: list[tuple[str, str]] = []
     for framework, label in (
@@ -382,7 +397,7 @@ def _missing_required_headers(text: str) -> list[str]:
     return [header for header in required_headers if header not in text]
 
 
-def _comparison_matrix_rows(notes: Any, key_points: Any) -> list[tuple[str, str, str, str]]:
+def _comparison_matrix_rows(notes: NotesPayload, key_points: list[str]) -> list[tuple[str, str, str, str]]:
     framework_points = _framework_points_for_matrix(notes, key_points)
     dimension_points = _dimension_points_for_matrix(notes)
     row_specs = [
@@ -479,10 +494,8 @@ def _comparison_matrix_rows(notes: Any, key_points: Any) -> list[tuple[str, str,
     return rows
 
 
-def _group_framework_points(key_points: Any) -> dict[str, list[str]]:
+def _group_framework_points(key_points: list[str]) -> dict[str, list[str]]:
     grouped: dict[str, list[str]] = {"langgraph": [], "autogen": [], "crewai": []}
-    if not isinstance(key_points, list):
-        return grouped
 
     for item in key_points:
         text = str(item).strip()
@@ -495,23 +508,11 @@ def _group_framework_points(key_points: Any) -> dict[str, list[str]]:
     return grouped
 
 
-def _framework_points_for_matrix(notes: Any, key_points: Any) -> dict[str, list[str]]:
+def _framework_points_for_matrix(notes: NotesPayload, key_points: list[str]) -> dict[str, list[str]]:
     grouped = _group_framework_points(key_points)
-    if not isinstance(notes, dict):
-        return grouped
-
-    structured = notes.get("structured")
-    if not isinstance(structured, dict):
-        return grouped
 
     for framework in ("langgraph", "autogen", "crewai"):
-        node = structured.get(framework)
-        if not isinstance(node, dict):
-            continue
-        raw_points = node.get("points", [])
-        if not isinstance(raw_points, list):
-            continue
-        points = [str(item).strip() for item in raw_points if str(item).strip()]
+        points = notes_framework_points(notes, framework)
         if points:
             grouped[framework] = list(dict.fromkeys(points))
     return grouped
@@ -542,7 +543,7 @@ def _select_dimension_row_cell(
     )
 
 
-def _dimension_points_for_matrix(notes: Any) -> dict[str, dict[str, list[str]]]:
+def _dimension_points_for_matrix(notes: NotesPayload) -> dict[str, dict[str, list[str]]]:
     matrix_points: dict[str, dict[str, list[str]]] = {
         "core_paradigm": {"langgraph": [], "autogen": [], "crewai": []},
         "coordination_style": {"langgraph": [], "autogen": [], "crewai": []},
@@ -550,26 +551,9 @@ def _dimension_points_for_matrix(notes: Any) -> dict[str, dict[str, list[str]]]:
         "best_fit": {"langgraph": [], "autogen": [], "crewai": []},
         "trade_off": {"langgraph": [], "autogen": [], "crewai": []},
     }
-    if not isinstance(notes, dict):
-        return matrix_points
-
-    structured = notes.get("structured")
-    if not isinstance(structured, dict):
-        return matrix_points
-
-    dimensions = structured.get("dimensions")
-    if not isinstance(dimensions, dict):
-        return matrix_points
-
     for dimension_key in matrix_points:
-        node = dimensions.get(dimension_key)
-        if not isinstance(node, dict):
-            continue
         for framework in ("langgraph", "autogen", "crewai"):
-            raw_points = node.get(framework, [])
-            if not isinstance(raw_points, list):
-                continue
-            points = [str(item).strip() for item in raw_points if str(item).strip()]
+            points = notes_dimension_points(notes, dimension_key, framework)
             if points:
                 matrix_points[dimension_key][framework] = list(dict.fromkeys(points))
     return matrix_points
@@ -674,7 +658,7 @@ def _record_model_event(
     )
 
 
-def _summarize_search_modes(search_results: Any) -> dict[str, Any]:
+def _summarize_search_modes(search_results: list[SearchResultItem]) -> dict[str, Any]:
     total_queries = 0
     real_count = 0
     mock_count = 0
@@ -690,68 +674,43 @@ def _summarize_search_modes(search_results: Any) -> dict[str, Any]:
     }
     fallback_reasons: list[str] = []
 
-    if not isinstance(search_results, list):
-        return {
-            "total_queries": 0,
-            "real_count": 0,
-            "mock_count": 0,
-            "fallback_count": 0,
-            "error_count": 0,
-            "duckduckgo_hits": 0,
-            "wikipedia_hits": 0,
-            "tavily_hits": 0,
-            "duckduckgo_errors": 0,
-            "wikipedia_errors": 0,
-            "tavily_errors": 0,
-            "fallback_reasons": [],
-        }
-
     for item in search_results:
-        if not isinstance(item, dict):
-            continue
         total_queries += 1
 
-        if "error" in item:
+        item_error = search_result_error(item)
+        if item_error is not None:
             error_count += 1
-            item_error = item.get("error")
-            if isinstance(item_error, str):
-                _accumulate_provider_error_counts([item_error], provider_error_counts)
+            _accumulate_provider_error_counts([item_error], provider_error_counts)
             continue
 
-        result = item.get("result")
-        if not isinstance(result, dict):
+        result = search_result_payload(item)
+        if result is None:
             continue
 
-        mode = result.get("mode")
+        mode = search_result_mode(result)
         if mode == "real":
             real_count += 1
         elif mode == "mock":
             mock_count += 1
 
-        source_hits = result.get("source_hits")
-        if isinstance(source_hits, dict):
-            duckduckgo_hits += int(source_hits.get("duckduckgo", 0) or 0)
-            wikipedia_hits += int(source_hits.get("wikipedia", 0) or 0)
-            tavily_hits += int(source_hits.get("tavily", 0) or 0)
+        source_hits = search_result_source_hits(result)
+        duckduckgo_hits += source_hits.get("duckduckgo", 0)
+        wikipedia_hits += source_hits.get("wikipedia", 0)
+        tavily_hits += source_hits.get("tavily", 0)
 
-        issue_texts: list[str] = []
-        real_issues = result.get("real_issues")
-        if isinstance(real_issues, list):
-            issue_texts.extend(str(issue) for issue in real_issues)
-        elif isinstance(real_issues, str):
-            issue_texts.append(real_issues)
+        issue_texts = search_result_issues(result)
 
         if not issue_texts:
-            fallback_reason = result.get("fallback_reason")
-            if isinstance(fallback_reason, str) and fallback_reason:
+            fallback_reason = search_result_fallback_reason(result)
+            if fallback_reason:
                 issue_texts.append(fallback_reason)
 
         _accumulate_provider_error_counts(issue_texts, provider_error_counts)
 
-        if result.get("fallback_used") is True:
+        if search_result_fallback_used(result):
             fallback_count += 1
-            reason = result.get("fallback_reason")
-            if isinstance(reason, str) and reason:
+            reason = search_result_fallback_reason(result)
+            if reason:
                 fallback_reasons.append(reason)
 
     unique_reasons = list(dict.fromkeys(fallback_reasons))
