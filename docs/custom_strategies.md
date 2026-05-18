@@ -1,6 +1,6 @@
 ﻿# Custom Strategies
 
-This document shows how to replace the default planning and writing logic in AgentLab.
+This document shows how to replace default planning, searching, reading, critique, and writing logic in AgentLab.
 
 ## Why
 
@@ -15,6 +15,37 @@ from agentlab.models.base import BaseModel
 
 class MyPlannerStrategy:
     def build_plan(self, topic: str, model: BaseModel | None) -> list[str]:
+        ...
+```
+
+Search strategy:
+
+```python
+from agentlab.agents.search_agent import SearchStrategyInput, SearchStrategyOutput
+
+class MySearchStrategy:
+    def collect(self, request: SearchStrategyInput) -> SearchStrategyOutput:
+        ...
+```
+
+Reader strategy:
+
+```python
+from agentlab.agents.reader_agent import ReaderStrategyInput
+from agentlab.workspace.research_workspace import NotesPayload
+
+class MyReaderStrategy:
+    def build_notes(self, request: ReaderStrategyInput) -> NotesPayload:
+        ...
+```
+
+Critic strategy:
+
+```python
+from agentlab.agents.critic_agent import CriticStrategyInput
+
+class MyCriticStrategy:
+    def build_critique(self, request: CriticStrategyInput) -> dict[str, object]:
         ...
 ```
 
@@ -35,6 +66,9 @@ from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supe
 
 config = SupervisorConfig(
     planner_strategy=MyPlannerStrategy(),
+    search_strategy=MySearchStrategy(),
+    reader_strategy=MyReaderStrategy(),
+    critic_strategy=MyCriticStrategy(),
     writer_strategy=MyWriterStrategy(),
     search_mode="mock",
     critic_mode="rule",

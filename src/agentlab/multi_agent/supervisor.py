@@ -15,7 +15,10 @@ from agentlab.agents import (
     SearchAgent,
     WriterAgent,
 )
+from agentlab.agents.critic_agent import CriticStrategy
 from agentlab.agents.planner_agent import PlannerStrategy
+from agentlab.agents.reader_agent import ReaderStrategy
+from agentlab.agents.search_agent import SearchStrategy
 from agentlab.agents.writer_agent import WriterStrategy
 from agentlab.core.agent import Agent
 from agentlab.core.event import Event
@@ -56,6 +59,9 @@ class SupervisorConfig:
     search_providers: list[str] | tuple[str, ...] | None = None
     critic_mode: Literal["auto", "rule", "llm"] = "auto"
     planner_strategy: PlannerStrategy | None = None
+    search_strategy: SearchStrategy | None = None
+    reader_strategy: ReaderStrategy | None = None
+    critic_strategy: CriticStrategy | None = None
     writer_strategy: WriterStrategy | None = None
     run_policy: RunPolicy = field(default_factory=RunPolicy)
 
@@ -270,9 +276,17 @@ def build_default_agents(model: BaseModel | None, config: SupervisorConfig) -> l
     strict_real_search = config.search_mode == "real" and not config.allow_search_fallback
     return [
         PlannerAgent(model=model, strategy=config.planner_strategy),
-        SearchAgent(model=model, fail_on_tool_error=strict_real_search),
-        ReaderAgent(model=model),
-        CriticAgent(model=model, critic_mode=config.critic_mode),
+        SearchAgent(
+            model=model,
+            fail_on_tool_error=strict_real_search,
+            strategy=config.search_strategy,
+        ),
+        ReaderAgent(model=model, strategy=config.reader_strategy),
+        CriticAgent(
+            model=model,
+            critic_mode=config.critic_mode,
+            strategy=config.critic_strategy,
+        ),
         WriterAgent(model=model, strategy=config.writer_strategy),
     ]
 

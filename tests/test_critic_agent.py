@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from agentlab.agents.critic_agent import CriticAgent, _build_critique
+from agentlab.agents.critic_agent import CriticAgent, CriticStrategyInput, _build_critique
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
 from agentlab.models.base import LLMMessage, ModelResponse
@@ -201,3 +201,32 @@ def test_critic_llm_mode_without_model_falls_back_to_rule() -> None:
 
     assert critique["assessment_mode"] == "rule_fallback"
     assert critique["model_fallback_reason"] == "critic_mode_llm_but_model_missing"
+
+
+class _StaticCriticStrategy:
+    def build_critique(self, request: CriticStrategyInput) -> dict[str, Any]:
+        del request
+        return {
+            "strengths": ["custom strength"],
+            "gaps": [],
+            "verdict": "acceptable",
+            "assessment_mode": "custom",
+        }
+
+
+def test_critic_agent_uses_custom_strategy() -> None:
+    agent = CriticAgent(strategy=_StaticCriticStrategy(), critic_mode="rule")
+    context = _build_context_with_notes(
+        {
+            "summary": "any",
+            "key_points": ["any"],
+            "references": ["https://example.com"],
+        }
+    )
+
+    response = agent.run(_critic_request(), context)
+    critique = context.blackboard.read("critique", {}) if context.blackboard else {}
+
+    assert response.type == "response"
+    assert critique["assessment_mode"] == "custom"
+    assert critique["verdict"] == "acceptable"

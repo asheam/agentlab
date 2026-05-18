@@ -2,7 +2,8 @@
 
 import json
 import re
-from typing import Any, Literal, cast
+from dataclasses import dataclass
+from typing import Any, Literal, Protocol, cast
 from urllib.parse import urlparse
 
 from agentlab.agents.research_dimensions import CONTENT_DIMENSION_KEYWORDS, DIMENSIONS
@@ -23,8 +24,51 @@ from agentlab.workspace.research_workspace import (
 CriticMode = Literal["auto", "rule", "llm"]
 
 
+@dataclass(frozen=True)
+class CriticStrategyInput:
+    notes: Any
+    model: BaseModel | None
+    critic_mode: CriticMode
+
+
+class CriticStrategy(Protocol):
+    def build_critique(self, request: CriticStrategyInput) -> dict[str, Any]:
+        """Build critique payload from notes."""
+
+
+class DefaultCriticStrategy:
+    def build_critique(self, request: CriticStrategyInput) -> dict[str, Any]:
+        rule_critique = _build_critique(request.notes)
+
+        critique = rule_critique
+        assessment_mode = "rule"
+        model_fallback_reason: str | None = None
+
+        if _should_attempt_model(request.critic_mode, request.model):
+            llm_critique, llm_error = _build_critique_with_model(request.notes, request.model)
+            if llm_critique is not None:
+                critique = _merge_rule_and_llm_critique(rule_critique, llm_critique)
+                assessment_mode = "llm"
+            else:
+                assessment_mode = "rule_fallback"
+                model_fallback_reason = llm_error
+        elif request.critic_mode == "llm":
+            assessment_mode = "rule_fallback"
+            model_fallback_reason = "critic_mode_llm_but_model_missing"
+
+        critique["assessment_mode"] = assessment_mode
+        if model_fallback_reason:
+            critique["model_fallback_reason"] = model_fallback_reason
+        return critique
+
+
 class CriticAgent(Agent):
-    def __init__(self, model: BaseModel | None = None, critic_mode: CriticMode = "auto") -> None:
+    def __init__(
+        self,
+        model: BaseModel | None = None,
+        critic_mode: CriticMode = "auto",
+        strategy: CriticStrategy | None = None,
+    ) -> None:
         super().__init__(
             name="critic",
             role="critic",
@@ -34,6 +78,7 @@ class CriticAgent(Agent):
         if critic_mode not in {"auto", "rule", "llm"}:
             raise ValueError("critic_mode must be one of: auto, rule, llm")
         self.critic_mode = critic_mode
+        self.strategy = strategy or DefaultCriticStrategy()
 
     @property
     def required_services(self) -> set[ServiceName]:
@@ -44,27 +89,13 @@ class CriticAgent(Agent):
             raise RuntimeError("blackboard is required for CriticAgent")
 
         notes = read_notes(context.blackboard)
-        rule_critique = _build_critique(notes)
-
-        critique = rule_critique
-        assessment_mode = "rule"
-        model_fallback_reason: str | None = None
-
-        if self._should_attempt_model():
-            llm_critique, llm_error = _build_critique_with_model(notes, self.model)
-            if llm_critique is not None:
-                critique = _merge_rule_and_llm_critique(rule_critique, llm_critique)
-                assessment_mode = "llm"
-            else:
-                assessment_mode = "rule_fallback"
-                model_fallback_reason = llm_error
-        elif self.critic_mode == "llm":
-            assessment_mode = "rule_fallback"
-            model_fallback_reason = "critic_mode_llm_but_model_missing"
-
-        critique["assessment_mode"] = assessment_mode
-        if model_fallback_reason:
-            critique["model_fallback_reason"] = model_fallback_reason
+        critique = self.strategy.build_critique(
+            CriticStrategyInput(
+                notes=notes,
+                model=self.model,
+                critic_mode=self.critic_mode,
+            )
+        )
 
         write_critique(
             context.blackboard,
@@ -80,11 +111,15 @@ class CriticAgent(Agent):
         )
 
     def _should_attempt_model(self) -> bool:
-        if self.critic_mode == "rule":
-            return False
-        if self.model is None:
-            return False
-        return self.critic_mode in {"auto", "llm"}
+        return _should_attempt_model(self.critic_mode, self.model)
+
+
+def _should_attempt_model(critic_mode: CriticMode, model: BaseModel | None) -> bool:
+    if critic_mode == "rule":
+        return False
+    if model is None:
+        return False
+    return critic_mode in {"auto", "llm"}
 
 
 class _LLMScores(PydanticBaseModel):

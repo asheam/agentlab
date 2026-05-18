@@ -143,6 +143,9 @@ from agentlab.multi_agent.supervisor import SupervisorConfig
 
 config = SupervisorConfig(
     planner_strategy=MyPlannerStrategy(),
+    search_strategy=MySearchStrategy(),
+    reader_strategy=MyReaderStrategy(),
+    critic_strategy=MyCriticStrategy(),
     writer_strategy=MyWriterStrategy(),
 )
 ```
@@ -150,6 +153,9 @@ config = SupervisorConfig(
 策略签名：
 
 - Planner: `build_plan(topic: str, model: BaseModel | None) -> list[str]`
+- Search: `collect(request: SearchStrategyInput) -> SearchStrategyOutput`
+- Reader: `build_notes(request: ReaderStrategyInput) -> NotesPayload`
+- Critic: `build_critique(request: CriticStrategyInput) -> dict[str, object]`
 - Writer: `build_report(request: WriterStrategyInput) -> str`
 
 完整示例见：`examples/05_custom_strategies.py` 与 `docs/custom_strategies.md`。

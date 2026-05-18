@@ -3,6 +3,9 @@ from __future__ import annotations
 import pytest
 
 from agentlab.agents import CriticAgent, PlannerAgent, ReaderAgent, SearchAgent, WriterAgent
+from agentlab.agents.critic_agent import CriticStrategyInput
+from agentlab.agents.reader_agent import ReaderStrategyInput
+from agentlab.agents.search_agent import SearchStrategyInput, SearchStrategyOutput
 from agentlab.agents.writer_agent import WriterStrategyInput
 from agentlab.models.base import BaseModel
 from agentlab.multi_agent.supervisor import (
@@ -11,6 +14,7 @@ from agentlab.multi_agent.supervisor import (
     build_default_supervisor,
     build_default_tools,
 )
+from agentlab.workspace.research_workspace import CritiquePayload, NotesPayload
 
 
 def test_build_default_supervisor_supports_config_object(tmp_path) -> None:
@@ -68,16 +72,46 @@ class _StaticWriterStrategy:
         return "# Custom Report\n"
 
 
+class _StaticSearchStrategy:
+    def collect(self, request: SearchStrategyInput) -> SearchStrategyOutput:
+        del request
+        return SearchStrategyOutput(search_results=[], tool_errors=[])
+
+
+class _StaticReaderStrategy:
+    def build_notes(self, request: ReaderStrategyInput) -> NotesPayload:
+        del request
+        return NotesPayload(key_points=[], references=[], summary="x", structured={})
+
+
+class _StaticCriticStrategy:
+    def build_critique(self, request: CriticStrategyInput) -> CritiquePayload:
+        del request
+        return CritiquePayload(verdict="acceptable", assessment_mode="custom")
+
+
 def test_build_default_agents_injects_custom_strategies() -> None:
     planner_strategy = _StaticPlannerStrategy()
+    search_strategy = _StaticSearchStrategy()
+    reader_strategy = _StaticReaderStrategy()
+    critic_strategy = _StaticCriticStrategy()
     writer_strategy = _StaticWriterStrategy()
     config = SupervisorConfig(
         planner_strategy=planner_strategy,
+        search_strategy=search_strategy,
+        reader_strategy=reader_strategy,
+        critic_strategy=critic_strategy,
         writer_strategy=writer_strategy,
     )
     agents = build_default_agents(model=None, config=config)
 
     assert isinstance(agents[0], PlannerAgent)
     assert agents[0].strategy is planner_strategy
+    assert isinstance(agents[1], SearchAgent)
+    assert agents[1].strategy is search_strategy
+    assert isinstance(agents[2], ReaderAgent)
+    assert agents[2].strategy is reader_strategy
+    assert isinstance(agents[3], CriticAgent)
+    assert agents[3].strategy is critic_strategy
     assert isinstance(agents[4], WriterAgent)
     assert agents[4].strategy is writer_strategy

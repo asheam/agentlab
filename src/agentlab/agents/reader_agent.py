@@ -1,7 +1,8 @@
 ﻿from __future__ import annotations
 
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from agentlab.agents.research_dimensions import (
     CONTENT_DIMENSION_KEYWORDS,
@@ -14,19 +15,40 @@ from agentlab.core.message import Message
 from agentlab.models.base import BaseModel
 from agentlab.workspace.research_workspace import (
     NotesPayload,
+    SearchResultItem,
     read_search_results,
     write_notes,
 )
 
 
+@dataclass(frozen=True)
+class ReaderStrategyInput:
+    search_results: list[SearchResultItem]
+
+
+class ReaderStrategy(Protocol):
+    def build_notes(self, request: ReaderStrategyInput) -> NotesPayload:
+        """Build structured notes from search results."""
+
+
+class DefaultReaderStrategy:
+    def build_notes(self, request: ReaderStrategyInput) -> NotesPayload:
+        return _build_notes(request.search_results)
+
+
 class ReaderAgent(Agent):
-    def __init__(self, model: BaseModel | None = None) -> None:
+    def __init__(
+        self,
+        model: BaseModel | None = None,
+        strategy: ReaderStrategy | None = None,
+    ) -> None:
         super().__init__(
             name="reader",
             role="reader",
             system_prompt="Read search results and extract concise research notes.",
             model=model,
         )
+        self.strategy = strategy or DefaultReaderStrategy()
 
     @property
     def required_services(self) -> set[ServiceName]:
@@ -37,7 +59,7 @@ class ReaderAgent(Agent):
             raise RuntimeError("blackboard is required for ReaderAgent")
 
         search_results = read_search_results(context.blackboard)
-        notes = _build_notes(search_results)
+        notes = self.strategy.build_notes(ReaderStrategyInput(search_results=search_results))
 
         write_notes(context.blackboard, notes=notes, author=self.name)
         return Message(

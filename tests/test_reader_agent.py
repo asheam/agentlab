@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from agentlab.agents.reader_agent import ReaderAgent, _build_notes
+from agentlab.agents.reader_agent import ReaderAgent, ReaderStrategyInput, _build_notes
 from agentlab.core.context import RuntimeContext
 from agentlab.core.message import Message
 from agentlab.workspace.blackboard import Blackboard
+from agentlab.workspace.research_workspace import NotesPayload
 
 
 def _sample_search_results() -> list[dict[str, object]]:
@@ -89,6 +90,34 @@ def test_reader_agent_writes_structured_notes_to_blackboard() -> None:
     assert "structured" in saved_notes
     assert isinstance(saved_notes["structured"], dict)
     assert "dimensions" in saved_notes["structured"]
+
+
+class _StaticReaderStrategy:
+    def build_notes(self, request: ReaderStrategyInput) -> NotesPayload:
+        del request
+        return NotesPayload(
+            key_points=["custom point"],
+            references=["mock://custom/ref"],
+            summary="custom summary",
+            structured={},
+        )
+
+
+def test_reader_agent_uses_custom_strategy() -> None:
+    blackboard = Blackboard()
+    blackboard.write("search_results", _sample_search_results(), author="searcher")
+    context = RuntimeContext(blackboard=blackboard)
+    agent = ReaderAgent(strategy=_StaticReaderStrategy())
+
+    response = agent.run(
+        Message(sender="supervisor", receiver="reader", content="summarize", type="task"),
+        context,
+    )
+
+    assert response.type == "response"
+    saved_notes = blackboard.read("notes")
+    assert saved_notes["summary"] == "custom summary"
+    assert saved_notes["key_points"] == ["custom point"]
 
 
 def test_reader_dimension_prefers_question_templates_and_deduplicates() -> None:

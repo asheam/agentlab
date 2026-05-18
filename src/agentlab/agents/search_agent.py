@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from time import perf_counter
+from typing import Protocol
 
 from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
@@ -14,12 +16,81 @@ from agentlab.workspace.research_workspace import (
 )
 
 
+@dataclass(frozen=True)
+class SearchStrategyInput:
+    topic: str
+    plan: list[str]
+    tool_name: str
+    context: RuntimeContext
+    agent_name: str
+
+
+@dataclass(frozen=True)
+class SearchStrategyOutput:
+    search_results: list[SearchResultItem]
+    tool_errors: list[str]
+
+
+class SearchStrategy(Protocol):
+    def collect(self, request: SearchStrategyInput) -> SearchStrategyOutput:
+        """Collect search results for all planned questions."""
+
+
+class DefaultSearchStrategy:
+    def collect(self, request: SearchStrategyInput) -> SearchStrategyOutput:
+        if request.context.tool_registry is None:
+            raise RuntimeError("tool_registry is required for SearchAgent")
+
+        search_results: list[SearchResultItem] = []
+        tool_errors: list[str] = []
+        for question in request.plan:
+            query = f"{request.topic} {question}".strip() if request.topic else question
+            start = perf_counter()
+            try:
+                result = request.context.tool_registry.call(request.tool_name, {"query": query})
+                elapsed_ms = (perf_counter() - start) * 1000
+                search_results.append({"question": question, "result": result})
+                if request.context.trace_recorder is not None:
+                    request.context.trace_recorder.record(
+                        Event(
+                            event_type="tool_call",
+                            agent=request.agent_name,
+                            tool_name=request.tool_name,
+                            tool_args={"query": query},
+                            tool_result=str(result),
+                            latency_ms=elapsed_ms,
+                            success=True,
+                        )
+                    )
+            except Exception as exc:
+                elapsed_ms = (perf_counter() - start) * 1000
+                error_text = str(exc)
+                search_results.append({"question": question, "error": error_text})
+                tool_errors.append(error_text)
+                if request.context.trace_recorder is not None:
+                    request.context.trace_recorder.record(
+                        Event(
+                            event_type="tool_call",
+                            agent=request.agent_name,
+                            tool_name=request.tool_name,
+                            tool_args={"query": query},
+                            tool_result=None,
+                            latency_ms=elapsed_ms,
+                            success=False,
+                            error=error_text,
+                        )
+                    )
+
+        return SearchStrategyOutput(search_results=search_results, tool_errors=tool_errors)
+
+
 class SearchAgent(Agent):
     def __init__(
         self,
         model: BaseModel | None = None,
         tool_name: str = "web_search",
         fail_on_tool_error: bool = False,
+        strategy: SearchStrategy | None = None,
     ) -> None:
         super().__init__(
             name="searcher",
@@ -29,6 +100,7 @@ class SearchAgent(Agent):
         )
         self.tool_name = tool_name
         self.fail_on_tool_error = fail_on_tool_error
+        self.strategy = strategy or DefaultSearchStrategy()
 
     @property
     def required_services(self) -> set[ServiceName]:
@@ -45,54 +117,28 @@ class SearchAgent(Agent):
         if not isinstance(topic, str):
             topic = ""
 
-        search_results: list[SearchResultItem] = []
-        tool_errors: list[str] = []
-        for question in plan:
-            query = f"{topic} {question}".strip() if topic else question
-            start = perf_counter()
-            try:
-                result = context.tool_registry.call(self.tool_name, {"query": query})
-                elapsed_ms = (perf_counter() - start) * 1000
-                search_results.append({"question": question, "result": result})
-                if context.trace_recorder is not None:
-                    context.trace_recorder.record(
-                        Event(
-                            event_type="tool_call",
-                            agent=self.name,
-                            tool_name=self.tool_name,
-                            tool_args={"query": query},
-                            tool_result=str(result),
-                            latency_ms=elapsed_ms,
-                            success=True,
-                        )
-                    )
-            except Exception as exc:
-                elapsed_ms = (perf_counter() - start) * 1000
-                error_text = str(exc)
-                search_results.append({"question": question, "error": error_text})
-                tool_errors.append(error_text)
-                if context.trace_recorder is not None:
-                    context.trace_recorder.record(
-                        Event(
-                            event_type="tool_call",
-                            agent=self.name,
-                            tool_name=self.tool_name,
-                            tool_args={"query": query},
-                            tool_result=None,
-                            latency_ms=elapsed_ms,
-                            success=False,
-                            error=error_text,
-                        )
-                    )
+        strategy_output = self.strategy.collect(
+            SearchStrategyInput(
+                topic=topic,
+                plan=plan,
+                tool_name=self.tool_name,
+                context=context,
+                agent_name=self.name,
+            )
+        )
 
-        write_search_results(context.blackboard, search_results=search_results, author=self.name)
-        if tool_errors and self.fail_on_tool_error:
-            raise RuntimeError(tool_errors[0])
+        write_search_results(
+            context.blackboard,
+            search_results=strategy_output.search_results,
+            author=self.name,
+        )
+        if strategy_output.tool_errors and self.fail_on_tool_error:
+            raise RuntimeError(strategy_output.tool_errors[0])
 
         return Message(
             sender=self.name,
             receiver=message.sender,
-            content=f"Collected {len(search_results)} search results.",
+            content=f"Collected {len(strategy_output.search_results)} search results.",
             type="response",
-            metadata={"count": len(search_results)},
+            metadata={"count": len(strategy_output.search_results)},
         )
