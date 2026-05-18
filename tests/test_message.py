@@ -1,4 +1,4 @@
-﻿from pydantic import ValidationError
+from pydantic import ValidationError
 import pytest
 
 from agentlab.core.message import MESSAGE_TYPES, Message

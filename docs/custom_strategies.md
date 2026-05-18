@@ -1,4 +1,4 @@
-﻿# Custom Strategies
+# Custom Strategies
 
 This document shows how to replace default planning, searching, reading, critique, and writing logic in AgentLab.
 

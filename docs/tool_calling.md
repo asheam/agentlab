@@ -1,4 +1,4 @@
-﻿# Tool Calling
+# Tool Calling
 
 工具调用通过 `ToolRegistry` 统一管理：
 

@@ -1,4 +1,4 @@
-﻿# AgentLab v0.1 设计说明
+# AgentLab v0.1 设计说明
 
 本版本目标是跑通最小可用多 Agent 协作链路：
 

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from agentlab.tools.calculator import CalculatorTool
 from agentlab.tools.registry import ToolRegistry

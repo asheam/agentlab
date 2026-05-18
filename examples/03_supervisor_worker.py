@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from agentlab.multi_agent.supervisor import build_default_supervisor
 

@@ -1,4 +1,4 @@
-﻿# AgentLab (v0.3)
+# AgentLab (v0.3)
 
 AgentLab 是一个面向学习与实验的轻量级 Python 多 Agent 框架。
 
