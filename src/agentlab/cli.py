@@ -10,7 +10,6 @@ from agentlab.multi_agent.supervisor import (
 
 DEFAULT_TOPIC = "研究 LangGraph、AutoGen、CrewAI 的区别"
 
-
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run AgentLab deep research demo.")
     parser.add_argument("topic", nargs="?", default=DEFAULT_TOPIC, help="Research topic")

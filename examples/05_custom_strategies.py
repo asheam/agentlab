@@ -1,0 +1,99 @@
+﻿from __future__ import annotations
+
+import argparse
+
+from agentlab.models.base import BaseModel
+from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supervisor
+from agentlab.agents.writer_agent import WriterStrategyInput
+
+
+class FocusedPlannerStrategy:
+    """A minimal planner strategy that enforces a fixed 5-question research frame."""
+
+    def build_plan(self, topic: str, model: BaseModel | None) -> list[str]:
+        del model
+        return [
+            f"{topic} 的核心设计理念是什么？",
+            f"{topic} 的任务编排机制如何工作？",
+            f"{topic} 在状态管理与可观测性上的关键差异是什么？",
+            f"{topic} 的工程落地成本和扩展性如何？",
+            f"{topic} 在中小团队中的选型建议是什么？",
+        ]
+
+
+class ExecutiveWriterStrategy:
+    """A compact writer strategy for executive-style markdown summaries."""
+
+    def build_report(self, request: WriterStrategyInput) -> str:
+        key_points = request.notes.get("key_points", [])
+        references = request.notes.get("references", [])
+        verdict = request.critique.get("verdict", "unknown")
+
+        lines: list[str] = []
+        lines.append("# Deep Research Report")
+        lines.append("")
+        lines.append("## Topic")
+        lines.append(request.topic)
+        lines.append("")
+        lines.append("## Executive Verdict")
+        lines.append(f"- Verdict: {verdict}")
+        lines.append(f"- Key findings captured: {len(key_points)}")
+        lines.append("")
+        lines.append("## Research Questions")
+        for idx, question in enumerate(request.plan, start=1):
+            lines.append(f"{idx}. {question}")
+        lines.append("")
+        lines.append("## Key Findings")
+        if key_points:
+            for point in key_points[:8]:
+                lines.append(f"- {point}")
+        else:
+            lines.append("- No key findings captured.")
+        lines.append("")
+        lines.append("## References")
+        if references:
+            for ref in references[:10]:
+                lines.append(f"- {ref}")
+        else:
+            lines.append("- No references.")
+
+        return "\n".join(lines).strip() + "\n"
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run deep research with custom planner/writer strategies.")
+    parser.add_argument(
+        "topic",
+        nargs="?",
+        default="研究 LangGraph、AutoGen、CrewAI 的区别",
+        help="Research topic",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="outputs/custom_strategies",
+        help="Output directory for generated artifacts.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    config = SupervisorConfig(
+        output_dir=args.output_dir,
+        search_mode="mock",
+        critic_mode="rule",
+        planner_strategy=FocusedPlannerStrategy(),
+        writer_strategy=ExecutiveWriterStrategy(),
+    )
+    supervisor = build_default_supervisor(config=config)
+    outputs = supervisor.run(args.topic)
+
+    print("Custom strategy demo completed")
+    for key, path in outputs.items():
+        print(f"{key}: {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
