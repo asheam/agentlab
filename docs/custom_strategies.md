@@ -114,6 +114,12 @@ List available presets:
 uv run python examples/04_deep_research.py --list-strategy-presets
 ```
 
+Print effective merged config without running the workflow:
+
+```bash
+uv run python examples/04_deep_research.py --config docs/agentlab.sample.yaml --print-effective-config
+```
+
 Run with YAML config:
 
 ```bash

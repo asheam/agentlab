@@ -20,6 +20,7 @@ def test_parse_args_defaults() -> None:
     assert args.critic_mode is None
     assert args.strategy_preset is None
     assert args.list_strategy_presets is False
+    assert args.print_effective_config is False
     assert args.topic is None
 
 
@@ -40,6 +41,7 @@ def test_parse_args_openai_and_output_dir() -> None:
             "--strategy-preset",
             "concise",
             "--list-strategy-presets",
+            "--print-effective-config",
         ]
     )
 
@@ -52,6 +54,7 @@ def test_parse_args_openai_and_output_dir() -> None:
     assert args.critic_mode == "llm"
     assert args.strategy_preset == "concise"
     assert args.list_strategy_presets is True
+    assert args.print_effective_config is True
 
 
 def test_main_supports_yaml_config_file(monkeypatch, tmp_path) -> None:
@@ -171,6 +174,43 @@ def test_main_returns_config_error_for_missing_file(capsys) -> None:
     assert exit_code == 2
     out = capsys.readouterr().out
     assert "Config error:" in out
+
+
+def test_main_prints_effective_config_and_exits(capsys, tmp_path) -> None:
+    config_path = tmp_path / "agentlab.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "topic: config topic",
+                "output_dir: out_from_config",
+                "search_mode: mock",
+                "search_providers: tavily,wikipedia",
+                "critic_mode: rule",
+                "strategy_preset: concise",
+                "no_search_fallback: true",
+                "use_openai: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--config",
+            str(config_path),
+            "--output-dir",
+            "cli_out",
+            "--print-effective-config",
+        ]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert '"topic": "config topic"' in out
+    assert '"output_dir": "cli_out"' in out
+    assert '"search_mode": "mock"' in out
+    assert '"strategy_preset": "concise"' in out
+    assert '"no_search_fallback": true' in out
 
 
 def test_supervisor_openai_mode_failure_still_exports_artifacts(monkeypatch, tmp_path) -> None:

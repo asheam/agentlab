@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import argparse
+import json
 from typing import Literal, cast
 
 from agentlab.cli_config import CLIConfigError, load_cli_config
@@ -71,6 +72,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="List available strategy presets and exit.",
     )
+    parser.add_argument(
+        "--print-effective-config",
+        action="store_true",
+        help="Print merged runtime config (after CLI/config/default precedence) and exit.",
+    )
     return parser.parse_args(argv)
 
 
@@ -122,6 +128,21 @@ def main(argv: list[str] | None = None) -> int:
         if args.strategy_preset is not None
         else _config_str(file_config, "strategy_preset", DEFAULT_STRATEGY_PRESET),
     )
+
+    effective_config = {
+        "topic": topic,
+        "use_openai": use_openai,
+        "output_dir": output_dir,
+        "search_mode": search_mode,
+        "no_search_fallback": no_search_fallback,
+        "search_providers": search_providers,
+        "critic_mode": critic_mode,
+        "strategy_preset": preset,
+    }
+
+    if args.print_effective_config:
+        print(json.dumps(effective_config, ensure_ascii=False, indent=2))
+        return 0
 
     config = SupervisorConfig(
         output_dir=output_dir,

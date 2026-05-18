@@ -153,6 +153,12 @@ uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 
 uv run python examples/04_deep_research.py --list-strategy-presets
 ```
 
+打印最终生效配置（不执行研究任务）：
+
+```bash
+uv run python examples/04_deep_research.py --config docs/agentlab.sample.yaml --print-effective-config
+```
+
 自定义全链路策略示例（Planner/Search/Reader/Critic/Writer）：
 
 ```bash
