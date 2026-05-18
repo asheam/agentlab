@@ -1,7 +1,8 @@
 ﻿from __future__ import annotations
 
 import re
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
@@ -20,14 +21,76 @@ from agentlab.workspace.research_workspace import (
 )
 
 
+@dataclass(frozen=True)
+class WriterStrategyInput:
+    topic: str
+    plan: list[str]
+    search_results: list[SearchResultItem]
+    notes: NotesPayload
+    critique: CritiquePayload
+    model: BaseModel | None
+    context: RuntimeContext
+
+
+class WriterStrategy(Protocol):
+    def build_report(self, request: WriterStrategyInput) -> str:
+        """Compose final markdown report."""
+
+
+class DefaultWriterStrategy:
+    def build_report(self, request: WriterStrategyInput) -> str:
+        report = _build_report(
+            request.topic,
+            request.plan,
+            request.search_results,
+            request.notes,
+            request.critique,
+        )
+        if request.model is None:
+            return report
+
+        generated, model_error = _build_report_with_model(
+            topic=request.topic,
+            plan=request.plan,
+            notes=request.notes,
+            critique=request.critique,
+            search_results=request.search_results,
+            model=request.model,
+        )
+        if generated:
+            _record_model_event(
+                context=request.context,
+                success=True,
+                error=None,
+                input_text=request.topic,
+                output_text="model report generated",
+            )
+            return generated
+
+        fallback_reason = model_error or "Writer model returned empty output."
+        _record_model_event(
+            context=request.context,
+            success=False,
+            error=fallback_reason,
+            input_text=request.topic,
+            output_text="fallback to template report",
+        )
+        return _append_fallback_note(report, fallback_reason)
+
+
 class WriterAgent(Agent):
-    def __init__(self, model: BaseModel | None = None) -> None:
+    def __init__(
+        self,
+        model: BaseModel | None = None,
+        strategy: WriterStrategy | None = None,
+    ) -> None:
         super().__init__(
             name="writer",
             role="writer",
             system_prompt="Write final markdown report from shared workspace.",
             model=model,
         )
+        self.strategy = strategy or DefaultWriterStrategy()
 
     @property
     def required_services(self) -> set[ServiceName]:
@@ -46,35 +109,17 @@ class WriterAgent(Agent):
         notes = read_notes(context.blackboard)
         critique = read_critique(context.blackboard)
 
-        report = _build_report(topic, plan, search_results, notes, critique)
-        if self.model is not None:
-            generated, model_error = _build_report_with_model(
+        report = self.strategy.build_report(
+            WriterStrategyInput(
                 topic=topic,
                 plan=plan,
+                search_results=search_results,
                 notes=notes,
                 critique=critique,
-                search_results=search_results,
                 model=self.model,
+                context=context,
             )
-            if generated:
-                report = generated
-                _record_model_event(
-                    context=context,
-                    success=True,
-                    error=None,
-                    input_text=topic,
-                    output_text="model report generated",
-                )
-            else:
-                fallback_reason = model_error or "Writer model returned empty output."
-                report = _append_fallback_note(report, fallback_reason)
-                _record_model_event(
-                    context=context,
-                    success=False,
-                    error=fallback_reason,
-                    input_text=topic,
-                    output_text="fallback to template report",
-                )
+        )
 
         write_report(context.blackboard, report=report, author=self.name)
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from agentlab.agents import CriticAgent, PlannerAgent, ReaderAgent, SearchAgent, WriterAgent
+from agentlab.agents.writer_agent import WriterStrategyInput
+from agentlab.models.base import BaseModel
 from agentlab.multi_agent.supervisor import (
     SupervisorConfig,
     build_default_agents,
@@ -52,3 +54,30 @@ def test_build_default_agents_returns_expected_sequence() -> None:
     assert isinstance(agents[3], CriticAgent)
     assert isinstance(agents[4], WriterAgent)
     assert agents[1].fail_on_tool_error is True
+
+
+class _StaticPlannerStrategy:
+    def build_plan(self, topic: str, model: BaseModel | None) -> list[str]:
+        del topic, model
+        return ["custom plan question"]
+
+
+class _StaticWriterStrategy:
+    def build_report(self, request: WriterStrategyInput) -> str:
+        del request
+        return "# Custom Report\n"
+
+
+def test_build_default_agents_injects_custom_strategies() -> None:
+    planner_strategy = _StaticPlannerStrategy()
+    writer_strategy = _StaticWriterStrategy()
+    config = SupervisorConfig(
+        planner_strategy=planner_strategy,
+        writer_strategy=writer_strategy,
+    )
+    agents = build_default_agents(model=None, config=config)
+
+    assert isinstance(agents[0], PlannerAgent)
+    assert agents[0].strategy is planner_strategy
+    assert isinstance(agents[4], WriterAgent)
+    assert agents[4].strategy is writer_strategy

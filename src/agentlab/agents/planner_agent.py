@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
+from typing import Protocol
 
 from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
@@ -9,14 +10,31 @@ from agentlab.models.base import BaseModel, LLMMessage
 from agentlab.workspace.research_workspace import write_plan
 
 
+class PlannerStrategy(Protocol):
+    def build_plan(self, topic: str, model: BaseModel | None) -> list[str]:
+        """Build research questions for a topic."""
+
+
+class DefaultPlannerStrategy:
+    def build_plan(self, topic: str, model: BaseModel | None) -> list[str]:
+        if model is not None:
+            return _build_plan_with_model(topic, model)
+        return _build_plan(topic)
+
+
 class PlannerAgent(Agent):
-    def __init__(self, model: BaseModel | None = None) -> None:
+    def __init__(
+        self,
+        model: BaseModel | None = None,
+        strategy: PlannerStrategy | None = None,
+    ) -> None:
         super().__init__(
             name="planner",
             role="planner",
             system_prompt="Break down a research topic into focused questions.",
             model=model,
         )
+        self.strategy = strategy or DefaultPlannerStrategy()
 
     @property
     def required_services(self) -> set[ServiceName]:
@@ -24,10 +42,7 @@ class PlannerAgent(Agent):
 
     def run(self, message: Message, context: RuntimeContext) -> Message:
         topic = message.content.strip()
-        if self.model is not None:
-            plan = _build_plan_with_model(topic, self.model)
-        else:
-            plan = _build_plan(topic)
+        plan = self.strategy.build_plan(topic, self.model)
 
         if context.blackboard is not None:
             write_plan(context.blackboard, plan=plan, author=self.name)
@@ -62,9 +77,9 @@ def _build_plan(topic: str) -> list[str]:
 
 def _build_plan_with_model(topic: str, model: BaseModel) -> list[str]:
     prompt = (
-        "请把研究主题拆解成 3-5 个研究问题。"
-        "仅输出问题本身，每行一个，不要解释。"
-        f"\n主题：{topic}"
+        "请把研究主题拆解成 3-5 个研究问题。\n"
+        "仅输出问题本身，每行一个，不要解释。\n"
+        f"主题：{topic}"
     )
     response = model.generate(
         [

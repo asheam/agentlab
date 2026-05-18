@@ -4,6 +4,7 @@ from pathlib import Path
 
 from agentlab.agents.writer_agent import (
     WriterAgent,
+    WriterStrategyInput,
     _extract_framework_clause,
     _select_framework_cell,
 )
@@ -22,6 +23,12 @@ class FixedModel:
     def generate(self, messages: list[LLMMessage]) -> ModelResponse:
         del messages
         return ModelResponse(content=self.response, model_name="fixed")
+
+
+class StaticWriterStrategy:
+    def build_report(self, request: WriterStrategyInput) -> str:
+        del request
+        return "# Deep Research Report\n\n## Topic\ncustom strategy\n"
 
 
 def _build_context(tmp_path: Path) -> RuntimeContext:
@@ -98,6 +105,20 @@ def test_writer_agent_uses_model_report_when_available(tmp_path: Path) -> None:
     payload = context.trace_recorder.to_dict()
     assert payload["events"][-1]["event_type"] == "model_call"
     assert payload["events"][-1]["success"] is True
+
+
+def test_writer_agent_uses_custom_strategy(tmp_path: Path) -> None:
+    agent = WriterAgent(strategy=StaticWriterStrategy())
+    context = _build_context(tmp_path)
+
+    response = agent.run(
+        Message(sender="supervisor", receiver="writer", content="topic", type="task", metadata={"topic": "topic"}),
+        context,
+    )
+
+    assert response.content == "# Deep Research Report\n\n## Topic\ncustom strategy\n"
+    assert context.blackboard is not None
+    assert context.blackboard.read("report") == response.content
 
 
 def test_writer_agent_falls_back_when_model_returns_empty(tmp_path: Path) -> None:
