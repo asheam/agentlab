@@ -100,4 +100,6 @@ Use the bundled example:
 uv run python examples/05_custom_strategies.py "研究 LangGraph、AutoGen、CrewAI 的区别"
 ```
 
+This example injects all five strategy slots in one run.
+
 Outputs include `report.md`, `trace.json`, `workspace.json`, and `run_summary.json` under the chosen output directory.

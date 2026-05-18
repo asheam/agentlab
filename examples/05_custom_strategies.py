@@ -2,13 +2,21 @@
 
 import argparse
 
+from agentlab.agents.critic_agent import CriticStrategyInput, DefaultCriticStrategy
+from agentlab.agents.reader_agent import DefaultReaderStrategy, ReaderStrategyInput
+from agentlab.agents.search_agent import (
+    DefaultSearchStrategy,
+    SearchStrategyInput,
+    SearchStrategyOutput,
+)
+from agentlab.agents.writer_agent import WriterStrategyInput
 from agentlab.models.base import BaseModel
 from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supervisor
-from agentlab.agents.writer_agent import WriterStrategyInput
+from agentlab.workspace.research_workspace import NotesPayload
 
 
 class FocusedPlannerStrategy:
-    """A minimal planner strategy that enforces a fixed 5-question research frame."""
+    """A planner strategy that enforces a fixed 5-question research frame."""
 
     def build_plan(self, topic: str, model: BaseModel | None) -> list[str]:
         del model
@@ -19,6 +27,59 @@ class FocusedPlannerStrategy:
             f"{topic} 的工程落地成本和扩展性如何？",
             f"{topic} 在中小团队中的选型建议是什么？",
         ]
+
+
+class TargetedSearchStrategy:
+    """Use default tool-calling behavior but limit to top-N plan items."""
+
+    def __init__(self, max_questions: int = 4) -> None:
+        self.max_questions = max_questions
+        self._delegate = DefaultSearchStrategy()
+
+    def collect(self, request: SearchStrategyInput) -> SearchStrategyOutput:
+        narrowed = SearchStrategyInput(
+            topic=request.topic,
+            plan=request.plan[: self.max_questions],
+            tool_name=request.tool_name,
+            context=request.context,
+            agent_name=request.agent_name,
+        )
+        return self._delegate.collect(narrowed)
+
+
+class ConciseReaderStrategy:
+    """Post-process default notes into a compact structure."""
+
+    def __init__(self) -> None:
+        self._delegate = DefaultReaderStrategy()
+
+    def build_notes(self, request: ReaderStrategyInput) -> NotesPayload:
+        notes = self._delegate.build_notes(request)
+        key_points = list(notes.get("key_points", []))[:6]
+        references = list(notes.get("references", []))[:8]
+        summary = str(notes.get("summary", ""))
+        structured = notes.get("structured", {})
+        return NotesPayload(
+            key_points=key_points,
+            references=references,
+            summary=summary,
+            structured=structured,
+        )
+
+
+class RuleOnlyCriticStrategy:
+    """Force deterministic rule-based critique regardless of model presence."""
+
+    def __init__(self) -> None:
+        self._delegate = DefaultCriticStrategy()
+
+    def build_critique(self, request: CriticStrategyInput) -> dict[str, object]:
+        forced_rule = CriticStrategyInput(
+            notes=request.notes,
+            model=request.model,
+            critic_mode="rule",
+        )
+        return self._delegate.build_critique(forced_rule)
 
 
 class ExecutiveWriterStrategy:
@@ -37,6 +98,7 @@ class ExecutiveWriterStrategy:
         lines.append("")
         lines.append("## Executive Verdict")
         lines.append(f"- Verdict: {verdict}")
+        lines.append(f"- Questions processed: {len(request.plan)}")
         lines.append(f"- Key findings captured: {len(key_points)}")
         lines.append("")
         lines.append("## Research Questions")
@@ -61,7 +123,9 @@ class ExecutiveWriterStrategy:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run deep research with custom planner/writer strategies.")
+    parser = argparse.ArgumentParser(
+        description="Run deep research with custom strategies across planner/search/reader/critic/writer."
+    )
     parser.add_argument(
         "topic",
         nargs="?",
@@ -84,6 +148,9 @@ def main(argv: list[str] | None = None) -> int:
         search_mode="mock",
         critic_mode="rule",
         planner_strategy=FocusedPlannerStrategy(),
+        search_strategy=TargetedSearchStrategy(max_questions=4),
+        reader_strategy=ConciseReaderStrategy(),
+        critic_strategy=RuleOnlyCriticStrategy(),
         writer_strategy=ExecutiveWriterStrategy(),
     )
     supervisor = build_default_supervisor(config=config)

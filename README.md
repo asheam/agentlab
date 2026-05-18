@@ -119,7 +119,7 @@ uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 
 uv run python examples/04_deep_research.py "研究 LangGraph、AutoGen、CrewAI 的区别" --search-mode real
 ```
 
-自定义 Planner/Writer 策略示例：
+自定义全链路策略示例（Planner/Search/Reader/Critic/Writer）：
 
 ```bash
 uv run python examples/05_custom_strategies.py "研究 LangGraph、AutoGen、CrewAI 的区别"
@@ -179,5 +179,5 @@ v0.3（已完成）：
 
 v0.4（进行中）：
 
-- 可替换 Planner/Writer 策略能力（已实现基础接口）
+- 可替换五类策略能力（Planner/Search/Reader/Critic/Writer）
 - 文档、示例与更多扩展点固化

@@ -10,6 +10,7 @@ from agentlab.agents.writer_agent import WriterStrategyInput
 from agentlab.models.base import BaseModel
 from agentlab.multi_agent.supervisor import (
     SupervisorConfig,
+    _instruction_for,
     build_default_agents,
     build_default_supervisor,
     build_default_tools,
@@ -115,3 +116,12 @@ def test_build_default_agents_injects_custom_strategies() -> None:
     assert agents[3].strategy is critic_strategy
     assert isinstance(agents[4], WriterAgent)
     assert agents[4].strategy is writer_strategy
+
+
+def test_instruction_templates_are_readable() -> None:
+    topic = "topic"
+    assert _instruction_for("planner", topic) == topic
+    assert _instruction_for("searcher", topic) == "请基于 plan 检索信息并写入 search_results。"
+    assert _instruction_for("reader", topic) == "请阅读 search_results 并整理 notes。"
+    assert _instruction_for("critic", topic) == "请审查 notes 的完整性并写入 critique。"
+    assert _instruction_for("writer", topic) == topic
