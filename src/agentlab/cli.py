@@ -6,6 +6,7 @@ from typing import Literal, cast
 
 from agentlab.cli_config import CLIConfigError, load_cli_config
 from agentlab.multi_agent.supervisor import (
+    RunPolicy,
     SupervisorConfig,
     build_default_supervisor,
 )
@@ -22,6 +23,11 @@ DEFAULT_SEARCH_MODE = "mock"
 DEFAULT_SEARCH_PROVIDERS = ["duckduckgo", "wikipedia", "tavily"]
 DEFAULT_CRITIC_MODE: Literal["auto", "rule", "llm"] = "auto"
 DEFAULT_STRATEGY_PRESET: StrategyPreset = "default"
+DEFAULT_MAX_RETRIES = 0
+DEFAULT_AGENT_TIMEOUT_S: float | None = None
+DEFAULT_RETRY_BACKOFF_S = 0.0
+DEFAULT_RETRY_ON_TIMEOUT_ONLY = False
+DEFAULT_CONTINUE_ON_ERROR = False
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -77,6 +83,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print merged runtime config (after CLI/config/default precedence) and exit.",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        help="Maximum retry attempts per agent (RunPolicy.max_retries).",
+    )
+    parser.add_argument(
+        "--agent-timeout-s",
+        type=float,
+        help="Soft timeout threshold in seconds per agent (RunPolicy.agent_timeout_s).",
+    )
+    parser.add_argument(
+        "--retry-backoff-s",
+        type=float,
+        help="Backoff sleep seconds before retry (RunPolicy.retry_backoff_s).",
+    )
+    parser.add_argument(
+        "--retry-on-timeout-only",
+        action="store_true",
+        help="Retry only timeout failures, not runtime errors (RunPolicy.retry_on_timeout_only).",
+    )
+    parser.add_argument(
+        "--continue-on-error",
+        action="store_true",
+        help="Continue pipeline after final agent failure (RunPolicy.continue_on_error).",
+    )
     return parser.parse_args(argv)
 
 
@@ -128,6 +159,35 @@ def main(argv: list[str] | None = None) -> int:
         if args.strategy_preset is not None
         else _config_str(file_config, "strategy_preset", DEFAULT_STRATEGY_PRESET),
     )
+    max_retries = (
+        args.max_retries
+        if args.max_retries is not None
+        else _config_int(file_config, "max_retries", DEFAULT_MAX_RETRIES)
+    )
+    agent_timeout_s = (
+        args.agent_timeout_s
+        if args.agent_timeout_s is not None
+        else _config_optional_float(
+            file_config,
+            "agent_timeout_s",
+            DEFAULT_AGENT_TIMEOUT_S,
+        )
+    )
+    retry_backoff_s = (
+        args.retry_backoff_s
+        if args.retry_backoff_s is not None
+        else _config_float(file_config, "retry_backoff_s", DEFAULT_RETRY_BACKOFF_S)
+    )
+    retry_on_timeout_only = args.retry_on_timeout_only or _config_bool(
+        file_config,
+        "retry_on_timeout_only",
+        DEFAULT_RETRY_ON_TIMEOUT_ONLY,
+    )
+    continue_on_error = args.continue_on_error or _config_bool(
+        file_config,
+        "continue_on_error",
+        DEFAULT_CONTINUE_ON_ERROR,
+    )
 
     effective_config = {
         "topic": topic,
@@ -138,11 +198,28 @@ def main(argv: list[str] | None = None) -> int:
         "search_providers": search_providers,
         "critic_mode": critic_mode,
         "strategy_preset": preset,
+        "max_retries": max_retries,
+        "agent_timeout_s": agent_timeout_s,
+        "retry_backoff_s": retry_backoff_s,
+        "retry_on_timeout_only": retry_on_timeout_only,
+        "continue_on_error": continue_on_error,
     }
 
     if args.print_effective_config:
         print(json.dumps(effective_config, ensure_ascii=False, indent=2))
         return 0
+
+    try:
+        run_policy = RunPolicy(
+            max_retries=max_retries,
+            agent_timeout_s=agent_timeout_s,
+            continue_on_error=continue_on_error,
+            retry_backoff_s=retry_backoff_s,
+            retry_on_timeout_only=retry_on_timeout_only,
+        )
+    except ValueError as exc:
+        print(f"Config error: {exc}")
+        return 2
 
     config = SupervisorConfig(
         output_dir=output_dir,
@@ -151,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         allow_search_fallback=not no_search_fallback,
         search_providers=search_providers,
         critic_mode=critic_mode,
+        run_policy=run_policy,
     )
     config = apply_strategy_preset(config, preset)
 
@@ -184,6 +262,39 @@ def _config_providers(config: dict[str, object], key: str, default: list[str]) -
         if providers:
             return providers
     return list(default)
+
+
+def _config_int(config: dict[str, object], key: str, default: int) -> int:
+    value = config.get(key)
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    return default
+
+
+def _config_optional_float(
+    config: dict[str, object],
+    key: str,
+    default: float | None,
+) -> float | None:
+    value = config.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    return default
+
+
+def _config_float(config: dict[str, object], key: str, default: float) -> float:
+    value = config.get(key)
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    return default
 
 
 def entrypoint() -> None:

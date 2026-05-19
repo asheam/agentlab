@@ -22,6 +22,11 @@ def test_parse_args_defaults() -> None:
     assert args.strategy_preset is None
     assert args.list_strategy_presets is False
     assert args.print_effective_config is False
+    assert args.max_retries is None
+    assert args.agent_timeout_s is None
+    assert args.retry_backoff_s is None
+    assert args.retry_on_timeout_only is False
+    assert args.continue_on_error is False
     assert args.topic is None
 
 
@@ -43,6 +48,14 @@ def test_parse_args_openai_and_output_dir() -> None:
             "concise",
             "--list-strategy-presets",
             "--print-effective-config",
+            "--max-retries",
+            "2",
+            "--agent-timeout-s",
+            "7.5",
+            "--retry-backoff-s",
+            "0.1",
+            "--retry-on-timeout-only",
+            "--continue-on-error",
         ]
     )
 
@@ -56,6 +69,11 @@ def test_parse_args_openai_and_output_dir() -> None:
     assert args.strategy_preset == "concise"
     assert args.list_strategy_presets is True
     assert args.print_effective_config is True
+    assert args.max_retries == 2
+    assert args.agent_timeout_s == 7.5
+    assert args.retry_backoff_s == 0.1
+    assert args.retry_on_timeout_only is True
+    assert args.continue_on_error is True
 
 
 def test_main_supports_yaml_config_file(monkeypatch, tmp_path) -> None:
@@ -73,6 +91,11 @@ def test_main_supports_yaml_config_file(monkeypatch, tmp_path) -> None:
                 "strategy_preset: concise",
                 "no_search_fallback: false",
                 "use_openai: false",
+                "max_retries: 1",
+                "agent_timeout_s: 5.0",
+                "retry_backoff_s: 0.2",
+                "retry_on_timeout_only: true",
+                "continue_on_error: false",
             ]
         ),
         encoding="utf-8",
@@ -98,6 +121,7 @@ def test_main_cli_args_override_yaml_config(monkeypatch, tmp_path) -> None:
                 "strategy_preset: default",
                 "search_mode: mock",
                 "critic_mode: auto",
+                "max_retries: 1",
             ]
         ),
         encoding="utf-8",
@@ -190,6 +214,11 @@ def test_main_prints_effective_config_and_exits(capsys, tmp_path) -> None:
                 "strategy_preset: concise",
                 "no_search_fallback: true",
                 "use_openai: false",
+                "max_retries: 1",
+                "agent_timeout_s: 5.0",
+                "retry_backoff_s: 0.2",
+                "retry_on_timeout_only: true",
+                "continue_on_error: true",
             ]
         ),
         encoding="utf-8",
@@ -212,6 +241,19 @@ def test_main_prints_effective_config_and_exits(capsys, tmp_path) -> None:
     assert '"search_mode": "mock"' in out
     assert '"strategy_preset": "concise"' in out
     assert '"no_search_fallback": true' in out
+    assert '"max_retries": 1' in out
+    assert '"agent_timeout_s": 5.0' in out
+    assert '"retry_backoff_s": 0.2' in out
+    assert '"retry_on_timeout_only": true' in out
+    assert '"continue_on_error": true' in out
+
+
+def test_main_returns_config_error_for_invalid_run_policy_args(capsys) -> None:
+    exit_code = main(["--max-retries", "-1"])
+
+    assert exit_code == 2
+    out = capsys.readouterr().out
+    assert "Config error:" in out
 
 
 def test_main_help_exits_zero(capsys) -> None:

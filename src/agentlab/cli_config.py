@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 
@@ -17,6 +18,11 @@ _ALLOWED_KEYS = {
     "search_providers",
     "critic_mode",
     "strategy_preset",
+    "max_retries",
+    "agent_timeout_s",
+    "retry_backoff_s",
+    "retry_on_timeout_only",
+    "continue_on_error",
 }
 
 
@@ -120,9 +126,14 @@ def _parse_scalar(value: str) -> Any:
             return []
         return [_parse_scalar(part.strip()) for part in inner.split(",")]
 
-    if stripped.isdigit():
+    if re.fullmatch(r"[+-]?\d+", stripped):
         try:
             return int(stripped)
+        except ValueError:
+            return stripped
+    if re.fullmatch(r"[+-]?(?:\d+\.\d+|\d+\.)", stripped):
+        try:
+            return float(stripped)
         except ValueError:
             return stripped
 
@@ -162,6 +173,24 @@ def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
         if value not in {"default", "concise"}:
             raise CLIConfigError("strategy_preset must be one of: default, concise.")
         normalized["strategy_preset"] = value
+    if "max_retries" in raw:
+        normalized["max_retries"] = _as_non_negative_int(raw["max_retries"], "max_retries")
+    if "agent_timeout_s" in raw:
+        normalized["agent_timeout_s"] = _as_positive_float_or_none(
+            raw["agent_timeout_s"], "agent_timeout_s"
+        )
+    if "retry_backoff_s" in raw:
+        normalized["retry_backoff_s"] = _as_non_negative_float(
+            raw["retry_backoff_s"], "retry_backoff_s"
+        )
+    if "retry_on_timeout_only" in raw:
+        normalized["retry_on_timeout_only"] = _as_bool(
+            raw["retry_on_timeout_only"], "retry_on_timeout_only"
+        )
+    if "continue_on_error" in raw:
+        normalized["continue_on_error"] = _as_bool(
+            raw["continue_on_error"], "continue_on_error"
+        )
 
     return normalized
 
@@ -200,3 +229,33 @@ def _as_search_providers(value: Any) -> list[str]:
         raise CLIConfigError("search_providers cannot be empty.")
 
     raise CLIConfigError("search_providers must be a comma-separated string or string list.")
+
+
+def _as_non_negative_int(value: Any, key: str) -> int:
+    if isinstance(value, bool):
+        raise CLIConfigError(f"Config key '{key}' must be an integer >= 0.")
+    if isinstance(value, int):
+        if value >= 0:
+            return value
+    raise CLIConfigError(f"Config key '{key}' must be an integer >= 0.")
+
+
+def _as_positive_float_or_none(value: Any, key: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise CLIConfigError(f"Config key '{key}' must be a number > 0 or null.")
+    if isinstance(value, (int, float)):
+        if float(value) > 0:
+            return float(value)
+    raise CLIConfigError(f"Config key '{key}' must be a number > 0 or null.")
+
+
+def _as_non_negative_float(value: Any, key: str) -> float:
+    if isinstance(value, bool):
+        raise CLIConfigError(f"Config key '{key}' must be a number >= 0.")
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        if numeric >= 0:
+            return numeric
+    raise CLIConfigError(f"Config key '{key}' must be a number >= 0.")

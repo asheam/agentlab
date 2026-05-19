@@ -9,3 +9,10 @@ critic_mode: auto
 strategy_preset: default
 no_search_fallback: false
 use_openai: false
+
+# RunPolicy (v0.6)
+max_retries: 0
+agent_timeout_s: null
+retry_backoff_s: 0.0
+retry_on_timeout_only: false
+continue_on_error: false
