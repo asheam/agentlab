@@ -292,14 +292,14 @@ def build_default_agents(model: BaseModel | None, config: SupervisorConfig) -> l
 
 
 def build_default_supervisor(
+    config: SupervisorConfig | None = None,
+    *,
     output_dir: str | Path = "outputs",
     use_openai_model: bool = False,
     search_mode: str = "mock",
     allow_search_fallback: bool = True,
     search_providers: list[str] | tuple[str, ...] | None = None,
     critic_mode: Literal["auto", "rule", "llm"] = "auto",
-    *,
-    config: SupervisorConfig | None = None,
 ) -> Supervisor:
     # Ensure .env variables (e.g., OPENAI_API_KEY / TAVILY_API_KEY) are available.
     load_dotenv()

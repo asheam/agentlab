@@ -6,7 +6,7 @@ __all__ = ["build_default_supervisor", "SupervisorConfig", "RunPolicy"]
 
 def main() -> None:
     topic = "研究 LangGraph、AutoGen、CrewAI 的区别"
-    supervisor = build_default_supervisor()
+    supervisor = build_default_supervisor(config=SupervisorConfig())
     outputs = supervisor.run(topic)
     print("AgentLab demo finished.")
     for key, path in outputs.items():
