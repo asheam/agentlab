@@ -1,8 +1,24 @@
-# AgentLab (v0.4)
+# AgentLab (v0.5)
 
 AgentLab 是一个面向学习与实验的轻量级 Python 多 Agent 框架。
 
 v0.1 跑通最小可用协作链路，v0.2 增强研究质量能力，v0.3 聚焦接口稳态重构（配置收敛、组装拆分、Workspace 契约与稳定 CLI），v0.4 增加可替换策略体系、策略预设与 YAML CLI 配置能力。
+
+## CLI 统一入口（v0.5）
+
+推荐通过包入口运行（而不是直接依赖示例脚本）：
+
+```bash
+uv run agentlab "研究 LangGraph、AutoGen、CrewAI 的区别"
+```
+
+可选：打印最终生效配置并退出：
+
+```bash
+uv run agentlab --config docs/agentlab.sample.yaml --print-effective-config
+```
+
+参数优先级保持不变：`CLI 参数 > 配置文件 > 默认值`。
 
 ## 1. 项目简介
 

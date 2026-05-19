@@ -4,6 +4,7 @@ from urllib.error import URLError
 
 import pytest
 
+import agentlab.cli as cli_module
 from agentlab.cli import main, parse_args
 from agentlab.multi_agent.supervisor import SupervisorConfig, build_default_supervisor
 
@@ -211,6 +212,24 @@ def test_main_prints_effective_config_and_exits(capsys, tmp_path) -> None:
     assert '"search_mode": "mock"' in out
     assert '"strategy_preset": "concise"' in out
     assert '"no_search_fallback": true' in out
+
+
+def test_main_help_exits_zero(capsys) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
+
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "Run AgentLab deep research demo." in out
+
+
+def test_cli_entrypoint_uses_main_exit_code(monkeypatch) -> None:
+    monkeypatch.setattr(cli_module, "main", lambda argv=None: 7)
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_module.entrypoint()
+
+    assert excinfo.value.code == 7
 
 
 def test_supervisor_openai_mode_failure_still_exports_artifacts(monkeypatch, tmp_path) -> None:

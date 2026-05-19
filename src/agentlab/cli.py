@@ -184,3 +184,11 @@ def _config_providers(config: dict[str, object], key: str, default: list[str]) -
         if providers:
             return providers
     return list(default)
+
+
+def entrypoint() -> None:
+    raise SystemExit(main())
+
+
+if __name__ == "__main__":
+    entrypoint()
