@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -42,12 +42,16 @@ class RunPolicy:
     max_retries: int = 0
     agent_timeout_s: float | None = None
     continue_on_error: bool = False
+    retry_backoff_s: float = 0.0
+    retry_on_timeout_only: bool = False
 
     def __post_init__(self) -> None:
         if self.max_retries < 0:
             raise ValueError("max_retries must be >= 0")
         if self.agent_timeout_s is not None and self.agent_timeout_s <= 0:
             raise ValueError("agent_timeout_s must be > 0 when provided")
+        if self.retry_backoff_s < 0:
+            raise ValueError("retry_backoff_s must be >= 0")
 
 
 @dataclass(frozen=True)
@@ -158,6 +162,7 @@ class Supervisor:
             if timeout_s is not None and elapsed_s > timeout_s:
                 # Soft timeout: runtime call already returned, so partial side effects may exist.
                 # Current retry behavior relies on overwrite semantics in workspace writes.
+                will_retry = attempt < max_attempts
                 timeout_error = (
                     f"Agent '{agent_name}' timed out: elapsed={elapsed_s:.3f}s > "
                     f"timeout={timeout_s:.3f}s (attempt {attempt}/{max_attempts})"
@@ -173,6 +178,7 @@ class Supervisor:
                         "reason": "timeout",
                         "elapsed_s": round(elapsed_s, 6),
                         "timeout_s": timeout_s,
+                        "will_retry": will_retry,
                     },
                 )
                 last_error = Message(
@@ -188,7 +194,12 @@ class Supervisor:
                         "timeout_s": timeout_s,
                     },
                 )
+                if will_retry:
+                    self._apply_retry_backoff()
+                    continue
+                break
             elif response.type == "error":
+                will_retry = attempt < max_attempts and not self.run_policy.retry_on_timeout_only
                 self._record_supervisor_event(
                     agent_name=agent_name,
                     success=False,
@@ -198,9 +209,14 @@ class Supervisor:
                         "attempt": attempt,
                         "max_attempts": max_attempts,
                         "reason": "runtime_error",
+                        "will_retry": will_retry,
                     },
                 )
                 last_error = response
+                if will_retry:
+                    self._apply_retry_backoff()
+                    continue
+                break
             else:
                 if attempt > 1:
                     self._record_supervisor_event(
@@ -216,9 +232,6 @@ class Supervisor:
                     )
                 return response
 
-            if attempt < max_attempts:
-                continue
-
         assert last_error is not None
         if self.run_policy.continue_on_error:
             self._record_supervisor_event(
@@ -229,6 +242,12 @@ class Supervisor:
                 metadata={"reason": "continue_on_error"},
             )
         return last_error
+
+    def _apply_retry_backoff(self) -> None:
+        backoff_s = self.run_policy.retry_backoff_s
+        if backoff_s <= 0:
+            return
+        sleep(backoff_s)
 
     def _record_supervisor_event(
         self,

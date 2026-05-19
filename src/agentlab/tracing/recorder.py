@@ -84,6 +84,9 @@ class TraceRecorder:
         search_provider_errors = {"duckduckgo": 0, "wikipedia": 0, "tavily": 0}
         search_queries = 0
         search_fallback_used = 0
+        retry_total = 0
+        retry_timeout = 0
+        retry_runtime_error = 0
         latencies: list[float] = []
         failures = 0
 
@@ -99,6 +102,18 @@ class TraceRecorder:
             if event.agent:
                 agent_summary = agent_stats.setdefault(event.agent, _AgentSummary())
                 agent_summary.add(success=event.success, latency_ms=event.latency_ms)
+                metadata = event.metadata
+                if (
+                    event.event_type == "agent_call"
+                    and metadata.get("emitter") == "supervisor"
+                    and metadata.get("will_retry") is True
+                ):
+                    retry_total += 1
+                    reason = metadata.get("reason")
+                    if reason == "timeout":
+                        retry_timeout += 1
+                    elif reason == "runtime_error":
+                        retry_runtime_error += 1
 
             if event.tool_name:
                 tool_summary = tool_stats.setdefault(event.tool_name, _ToolSummary())
@@ -146,6 +161,11 @@ class TraceRecorder:
                 "mode_counts": search_mode_counts,
                 "provider_hits": search_provider_hits,
                 "provider_errors": search_provider_errors,
+            },
+            "retry_stats": {
+                "total_retries": retry_total,
+                "timeout_retries": retry_timeout,
+                "error_retries": retry_runtime_error,
             },
         }
 

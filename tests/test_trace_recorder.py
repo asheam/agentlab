@@ -61,6 +61,9 @@ def test_trace_recorder_summary_and_export(tmp_path) -> None:
     assert summary["search_stats"]["mode_counts"]["real"] == 1
     assert summary["search_stats"]["provider_hits"]["wikipedia"] == 1
     assert summary["search_stats"]["provider_errors"]["duckduckgo"] == 1
+    assert summary["retry_stats"]["total_retries"] == 0
+    assert summary["retry_stats"]["timeout_retries"] == 0
+    assert summary["retry_stats"]["error_retries"] == 0
 
     out_path = tmp_path / "run_summary.json"
     recorder.export_summary_json(out_path)
