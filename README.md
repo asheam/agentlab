@@ -3,6 +3,7 @@
 AgentLab 是一个面向学习与实验的轻量级 Python 多 Agent 框架。
 
 v0.1 跑通最小可用协作链路，v0.2 增强研究质量能力，v0.3 聚焦接口稳态重构（配置收敛、组装拆分、Workspace 契约与稳定 CLI），v0.4 增加可替换策略体系、策略预设与 YAML CLI 配置能力。
+v0.5 聚焦 config-first 运行入口与 CLI 统一。
 
 ## CLI 统一入口（v0.5）
 
@@ -240,17 +241,23 @@ v0.4（已完成）：
 - YAML CLI 配置文件（`--config`）与参数优先级合并
 - 文档、示例与测试补齐
 
-## 10. RunPolicy (v0.6)
+v0.5（已完成）：
 
-v0.6 adds finer retry controls for `Supervisor.run_policy`:
+- `SupervisorConfig` 成为主调用入口（config-first）
+- CLI 执行入口统一为 `agentlab.cli:entrypoint`
+- `agentlab` 命令与示例脚本保持兼容
 
-- `max_retries`: max retry count per agent (existing)
-- `agent_timeout_s`: soft timeout threshold per agent (existing)
-- `retry_backoff_s`: sleep seconds before retry (new)
-- `retry_on_timeout_only`: when `true`, retry only timeout failures and do not retry runtime errors (new)
-- `continue_on_error`: continue pipeline after final failure (existing)
+## 10. RunPolicy（v0.6）
 
-Example:
+v0.6 为 `Supervisor.run_policy` 增加了更细粒度的重试控制：
+
+- `max_retries`：单个 Agent 的最大重试次数（已有）
+- `agent_timeout_s`：单个 Agent 的软超时时间阈值（已有）
+- `retry_backoff_s`：每次重试前的等待秒数（新增）
+- `retry_on_timeout_only`：为 `true` 时仅对超时失败重试，不对运行时错误重试（新增）
+- `continue_on_error`：最终失败后是否继续后续链路（已有）
+
+示例：
 
 ```python
 from agentlab.multi_agent.supervisor import RunPolicy, SupervisorConfig
@@ -265,10 +272,10 @@ config = SupervisorConfig(
 )
 ```
 
-`outputs/run_summary.json` now includes retry telemetry:
+`outputs/run_summary.json` 现在包含重试统计：
 
 - `retry_stats.total_retries`
 - `retry_stats.timeout_retries`
 - `retry_stats.error_retries`
 
-`search_stats` remains available for query/provider-level observability.
+同时保留 `search_stats`，用于查询与 provider 维度的可观测性分析。
