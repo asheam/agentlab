@@ -1,4 +1,4 @@
-# AgentLab (v0.5)
+# AgentLab (v0.6)
 
 AgentLab 是一个面向学习与实验的轻量级 Python 多 Agent 框架。
 
@@ -239,3 +239,36 @@ v0.4（已完成）：
 - 内置策略预设（`default` / `concise`）与预设列表能力
 - YAML CLI 配置文件（`--config`）与参数优先级合并
 - 文档、示例与测试补齐
+
+## 10. RunPolicy (v0.6)
+
+v0.6 adds finer retry controls for `Supervisor.run_policy`:
+
+- `max_retries`: max retry count per agent (existing)
+- `agent_timeout_s`: soft timeout threshold per agent (existing)
+- `retry_backoff_s`: sleep seconds before retry (new)
+- `retry_on_timeout_only`: when `true`, retry only timeout failures and do not retry runtime errors (new)
+- `continue_on_error`: continue pipeline after final failure (existing)
+
+Example:
+
+```python
+from agentlab.multi_agent.supervisor import RunPolicy, SupervisorConfig
+
+config = SupervisorConfig(
+    run_policy=RunPolicy(
+        max_retries=2,
+        agent_timeout_s=8.0,
+        retry_backoff_s=0.5,
+        retry_on_timeout_only=True,
+    )
+)
+```
+
+`outputs/run_summary.json` now includes retry telemetry:
+
+- `retry_stats.total_retries`
+- `retry_stats.timeout_retries`
+- `retry_stats.error_retries`
+
+`search_stats` remains available for query/provider-level observability.
