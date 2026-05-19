@@ -25,6 +25,7 @@ from agentlab.workspace.research_workspace import (
     search_result_issues,
     search_result_mode,
     search_result_payload,
+    search_result_provider_errors,
     search_result_source_hits,
     write_critique,
     write_notes,
@@ -154,6 +155,7 @@ def test_research_workspace_critique_helpers_and_search_helpers() -> None:
                     "fallback_used": True,
                     "fallback_reason": "tavily_error: missing",
                     "source_hits": {"duckduckgo": "1", "wikipedia": 2, "tavily": 0},
+                    "provider_errors": {"duckduckgo": 1, "wikipedia": "0", "tavily": 2},
                     "real_issues": ["duckduckgo_error: timeout"],
                 },
             },
@@ -179,4 +181,5 @@ def test_research_workspace_critique_helpers_and_search_helpers() -> None:
     assert search_result_fallback_used(payload) is True
     assert search_result_fallback_reason(payload) == "tavily_error: missing"
     assert search_result_source_hits(payload) == {"duckduckgo": 1, "wikipedia": 2, "tavily": 0}
+    assert search_result_provider_errors(payload) == {"duckduckgo": 1, "wikipedia": 0, "tavily": 2}
     assert search_result_issues(payload) == ["duckduckgo_error: timeout"]

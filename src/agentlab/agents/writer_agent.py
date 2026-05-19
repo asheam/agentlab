@@ -35,6 +35,7 @@ from agentlab.workspace.research_workspace import (
     search_result_issues,
     search_result_mode,
     search_result_payload,
+    search_result_provider_errors,
     search_result_source_hits,
     write_report,
 )
@@ -697,6 +698,7 @@ def _summarize_search_modes(search_results: list[SearchResultItem]) -> dict[str,
         duckduckgo_hits += source_hits.get("duckduckgo", 0)
         wikipedia_hits += source_hits.get("wikipedia", 0)
         tavily_hits += source_hits.get("tavily", 0)
+        provider_errors = search_result_provider_errors(result)
 
         issue_texts = search_result_issues(result)
 
@@ -705,7 +707,12 @@ def _summarize_search_modes(search_results: list[SearchResultItem]) -> dict[str,
             if fallback_reason:
                 issue_texts.append(fallback_reason)
 
-        _accumulate_provider_error_counts(issue_texts, provider_error_counts)
+        if any(provider_errors.values()):
+            provider_error_counts["duckduckgo"] += provider_errors.get("duckduckgo", 0)
+            provider_error_counts["wikipedia"] += provider_errors.get("wikipedia", 0)
+            provider_error_counts["tavily"] += provider_errors.get("tavily", 0)
+        else:
+            _accumulate_provider_error_counts(issue_texts, provider_error_counts)
 
         if search_result_fallback_used(result):
             fallback_count += 1

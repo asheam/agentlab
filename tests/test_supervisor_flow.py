@@ -36,6 +36,7 @@ def test_supervisor_generates_outputs(tmp_path) -> None:
     summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert "total_events" in summary_payload
     assert "agent_stats" in summary_payload
+    assert "search_stats" in summary_payload
 
 
 def test_supervisor_report_contains_framework_comparison(tmp_path) -> None:

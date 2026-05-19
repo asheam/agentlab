@@ -79,6 +79,11 @@ class TraceRecorder:
         event_type_counts: dict[str, int] = {}
         agent_stats: dict[str, _AgentSummary] = {}
         tool_stats: dict[str, _ToolSummary] = {}
+        search_mode_counts: dict[str, int] = {}
+        search_provider_hits = {"duckduckgo": 0, "wikipedia": 0, "tavily": 0}
+        search_provider_errors = {"duckduckgo": 0, "wikipedia": 0, "tavily": 0}
+        search_queries = 0
+        search_fallback_used = 0
         latencies: list[float] = []
         failures = 0
 
@@ -98,6 +103,28 @@ class TraceRecorder:
             if event.tool_name:
                 tool_summary = tool_stats.setdefault(event.tool_name, _ToolSummary())
                 tool_summary.add(success=event.success, latency_ms=event.latency_ms)
+                if event.tool_name == "web_search":
+                    search_queries += 1
+                    metadata = event.metadata
+                    mode = metadata.get("search_mode")
+                    if isinstance(mode, str) and mode:
+                        search_mode_counts[mode] = search_mode_counts.get(mode, 0) + 1
+                    if metadata.get("fallback_used") is True:
+                        search_fallback_used += 1
+                    _increment_provider_counter(
+                        search_provider_hits,
+                        metadata.get("source_hits"),
+                    )
+                    metadata_provider_errors = metadata.get("provider_errors")
+                    _increment_provider_counter(
+                        search_provider_errors,
+                        metadata_provider_errors,
+                    )
+                    if event.error and not _has_nonzero_provider_counts(metadata_provider_errors):
+                        _increment_provider_counter(
+                            search_provider_errors,
+                            _provider_errors_from_text(event.error),
+                        )
 
         total_latency_ms = sum(latencies)
         return {
@@ -113,6 +140,13 @@ class TraceRecorder:
             },
             "agent_stats": {name: stats.to_dict() for name, stats in agent_stats.items()},
             "tool_stats": {name: stats.to_dict() for name, stats in tool_stats.items()},
+            "search_stats": {
+                "queries": search_queries,
+                "fallback_used": search_fallback_used,
+                "mode_counts": search_mode_counts,
+                "provider_hits": search_provider_hits,
+                "provider_errors": search_provider_errors,
+            },
         }
 
     def export_json(self, path: str | Path) -> Path:
@@ -129,3 +163,52 @@ class TraceRecorder:
             encoding="utf-8",
         )
         return target
+
+
+def _increment_provider_counter(target: dict[str, int], raw: object) -> None:
+    if not isinstance(raw, dict):
+        return
+    for provider in target:
+        value = raw.get(provider)
+        if value is None:
+            continue
+        target[provider] += _to_int(value)
+
+
+def _provider_errors_from_text(text: str) -> dict[str, int]:
+    lowered = text.lower()
+    return {
+        "duckduckgo": lowered.count("duckduckgo_error:"),
+        "wikipedia": lowered.count("wikipedia_error:"),
+        "tavily": lowered.count("tavily_error:"),
+    }
+
+
+def _has_nonzero_provider_counts(raw: object) -> bool:
+    if not isinstance(raw, dict):
+        return False
+    for provider in ("duckduckgo", "wikipedia", "tavily"):
+        value = raw.get(provider)
+        if value is None:
+            continue
+        if _to_int(value) > 0:
+            return True
+    return False
+
+
+def _to_int(raw: object) -> int:
+    if isinstance(raw, bool):
+        return int(raw)
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw)
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return 0
+        try:
+            return int(float(text))
+        except ValueError:
+            return 0
+    return 0

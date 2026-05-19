@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Protocol
+from typing import Any, Protocol
 
 from agentlab.core.agent import Agent, ServiceName
 from agentlab.core.context import RuntimeContext
@@ -60,6 +60,7 @@ class DefaultSearchStrategy:
                             tool_result=str(result),
                             latency_ms=elapsed_ms,
                             success=True,
+                            metadata=_tool_event_metadata(result),
                         )
                     )
             except Exception as exc:
@@ -78,6 +79,7 @@ class DefaultSearchStrategy:
                             latency_ms=elapsed_ms,
                             success=False,
                             error=error_text,
+                            metadata={"provider_errors": _provider_errors_from_text(error_text)},
                         )
                     )
 
@@ -142,3 +144,66 @@ class SearchAgent(Agent):
             type="response",
             metadata={"count": len(strategy_output.search_results)},
         )
+
+
+def _tool_event_metadata(result: Any) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        return {}
+
+    metadata: dict[str, Any] = {}
+    mode = result.get("mode")
+    if isinstance(mode, str):
+        metadata["search_mode"] = mode
+
+    metadata["fallback_used"] = result.get("fallback_used") is True
+
+    source_hits = _normalize_counter_dict(result.get("source_hits"))
+    if source_hits:
+        metadata["source_hits"] = source_hits
+
+    provider_errors = _normalize_counter_dict(result.get("provider_errors"))
+    if provider_errors:
+        metadata["provider_errors"] = provider_errors
+
+    return metadata
+
+
+def _normalize_counter_dict(raw: Any) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    normalized: dict[str, int] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            continue
+        name = key.strip().lower()
+        if name not in {"duckduckgo", "wikipedia", "tavily"}:
+            continue
+        normalized[name] = _to_int(value)
+    return normalized
+
+
+def _provider_errors_from_text(text: str) -> dict[str, int]:
+    lowered = text.lower()
+    counts = {"duckduckgo": 0, "wikipedia": 0, "tavily": 0}
+    for provider in counts:
+        token = f"{provider}_error:"
+        counts[provider] = lowered.count(token)
+    return {provider: value for provider, value in counts.items() if value > 0}
+
+
+def _to_int(raw: Any) -> int:
+    if isinstance(raw, bool):
+        return int(raw)
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw)
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return 0
+        try:
+            return int(float(text))
+        except ValueError:
+            return 0
+    return 0

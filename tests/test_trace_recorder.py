@@ -40,6 +40,12 @@ def test_trace_recorder_summary_and_export(tmp_path) -> None:
             success=False,
             latency_ms=25.0,
             error="network error",
+            metadata={
+                "search_mode": "real",
+                "fallback_used": True,
+                "source_hits": {"duckduckgo": 0, "wikipedia": 1, "tavily": 0},
+                "provider_errors": {"duckduckgo": 1, "wikipedia": 0, "tavily": 0},
+            },
         )
     )
 
@@ -50,6 +56,11 @@ def test_trace_recorder_summary_and_export(tmp_path) -> None:
     assert summary["event_type_counts"]["tool_call"] == 1
     assert summary["agent_stats"]["planner"]["events"] == 1
     assert summary["tool_stats"]["web_search"]["calls"] == 1
+    assert summary["search_stats"]["queries"] == 1
+    assert summary["search_stats"]["fallback_used"] == 1
+    assert summary["search_stats"]["mode_counts"]["real"] == 1
+    assert summary["search_stats"]["provider_hits"]["wikipedia"] == 1
+    assert summary["search_stats"]["provider_errors"]["duckduckgo"] == 1
 
     out_path = tmp_path / "run_summary.json"
     recorder.export_summary_json(out_path)

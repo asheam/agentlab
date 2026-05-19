@@ -205,6 +205,42 @@ def test_writer_agent_reports_provider_error_counts(tmp_path: Path) -> None:
     assert "_Italic cells indicate fallback defaults when direct evidence is unavailable._" in response.content
 
 
+def test_writer_agent_prefers_structured_provider_error_counts(tmp_path: Path) -> None:
+    agent = WriterAgent()
+    context = _build_context(tmp_path)
+
+    assert context.blackboard is not None
+    context.blackboard.write(
+        "search_results",
+        [
+            {
+                "question": "Q1",
+                "result": {
+                    "mode": "real",
+                    "fallback_used": True,
+                    "source_hits": {"duckduckgo": 0, "wikipedia": 0, "tavily": 0},
+                    "provider_errors": {"duckduckgo": 2, "wikipedia": 3, "tavily": 4},
+                    "real_issues": [
+                        "duckduckgo_error: should_not_double_count",
+                        "wikipedia_error: should_not_double_count",
+                        "tavily_error: should_not_double_count",
+                    ],
+                },
+            }
+        ],
+        author="searcher",
+    )
+
+    response = agent.run(
+        Message(sender="supervisor", receiver="writer", content="topic", type="task", metadata={"topic": "topic"}),
+        context,
+    )
+
+    assert "| DuckDuckGo errors | 2 |" in response.content
+    assert "| Wikipedia errors | 3 |" in response.content
+    assert "| Tavily errors | 4 |" in response.content
+
+
 def test_extract_framework_clause_strips_natural_prefix() -> None:
     result = _extract_framework_clause(
         "LangGraph uses graph-based orchestration with state checkpoints.",

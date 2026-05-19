@@ -13,11 +13,18 @@ class SearchSourceHits(TypedDict, total=False):
     tavily: int
 
 
+class SearchProviderErrors(TypedDict, total=False):
+    duckduckgo: int
+    wikipedia: int
+    tavily: int
+
+
 class SearchToolResult(TypedDict, total=False):
     mode: str
     fallback_used: bool
     fallback_reason: str
     source_hits: SearchSourceHits
+    provider_errors: SearchProviderErrors
     real_issues: list[str] | str
     results: list[dict[str, Any]]
 
@@ -343,6 +350,21 @@ def search_result_source_hits(payload: SearchToolResult | None) -> SearchSourceH
         return SearchSourceHits()
 
     return SearchSourceHits(
+        duckduckgo=_as_int(raw.get("duckduckgo")),
+        wikipedia=_as_int(raw.get("wikipedia")),
+        tavily=_as_int(raw.get("tavily")),
+    )
+
+
+def search_result_provider_errors(payload: SearchToolResult | None) -> SearchProviderErrors:
+    if payload is None:
+        return SearchProviderErrors()
+
+    raw = payload.get("provider_errors")
+    if not isinstance(raw, dict):
+        return SearchProviderErrors()
+
+    return SearchProviderErrors(
         duckduckgo=_as_int(raw.get("duckduckgo")),
         wikipedia=_as_int(raw.get("wikipedia")),
         tavily=_as_int(raw.get("tavily")),

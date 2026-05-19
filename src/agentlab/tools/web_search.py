@@ -49,6 +49,7 @@ class WebSearchTool(BaseTool):
 
         candidates = _build_real_query_candidates(cleaned_query)
         errors: list[str] = []
+        provider_errors: dict[str, int] = {provider: 0 for provider in self.real_providers}
 
         for candidate in candidates:
             try:
@@ -57,6 +58,10 @@ class WebSearchTool(BaseTool):
                 errors.append(f"{candidate}: real_search_error: {exc}")
                 continue
 
+            _merge_provider_errors(
+                destination=provider_errors,
+                source=real_result.get("provider_errors"),
+            )
             if real_result["results"]:
                 real_result["query_original"] = cleaned_query
                 real_result["query_used"] = candidate
@@ -82,11 +87,13 @@ class WebSearchTool(BaseTool):
         fallback["fallback_reason"] = errors[0] if errors else "real_search_empty"
         fallback["real_issues"] = errors
         fallback["query_candidates"] = candidates
+        fallback["provider_errors"] = provider_errors
         return fallback
 
     def _run_real_search(self, query: str) -> dict[str, Any]:
         results: list[dict[str, str]] = []
         source_hits: dict[str, int] = {provider: 0 for provider in self.real_providers}
+        provider_errors: dict[str, int] = {provider: 0 for provider in self.real_providers}
         issues: list[str] = []
 
         for provider in self.real_providers:
@@ -94,6 +101,7 @@ class WebSearchTool(BaseTool):
                 provider_results = self._search_by_provider(provider, query)
             except (URLError, TimeoutError, ValueError, OSError, RuntimeError) as exc:
                 issues.append(f"{provider}_error: {exc}")
+                provider_errors[provider] = provider_errors.get(provider, 0) + 1
                 continue
 
             source_hits[provider] = len(provider_results)
@@ -106,6 +114,7 @@ class WebSearchTool(BaseTool):
             "mode": "real",
             "fallback_used": False,
             "source_hits": source_hits,
+            "provider_errors": provider_errors,
             "real_issues": issues,
         }
 
@@ -303,6 +312,36 @@ def _normalize_real_providers(
     if not deduplicated:
         raise ValueError("real providers cannot be empty")
     return deduplicated
+
+
+def _merge_provider_errors(destination: dict[str, int], source: Any) -> None:
+    if not isinstance(source, dict):
+        return
+    for provider, raw_value in source.items():
+        if not isinstance(provider, str):
+            continue
+        key = provider.strip().lower()
+        if key not in destination:
+            continue
+        destination[key] = destination.get(key, 0) + _coerce_int(raw_value)
+
+
+def _coerce_int(raw: Any) -> int:
+    if isinstance(raw, bool):
+        return int(raw)
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw)
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return 0
+        try:
+            return int(float(text))
+        except ValueError:
+            return 0
+    return 0
 
 
 def _contains_cjk(text: str) -> bool:

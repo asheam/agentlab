@@ -76,6 +76,8 @@ def test_web_search_real_mode_returns_real_results(monkeypatch) -> None:
     assert result["results"][0]["source"].startswith("https://")
     assert result["source_hits"]["duckduckgo"] >= 1
     assert "wikipedia" in result["source_hits"]
+    assert "provider_errors" in result
+    assert result["provider_errors"]["duckduckgo"] == 0
 
 
 def test_web_search_real_mode_falls_back_to_mock_on_error(monkeypatch) -> None:
@@ -93,6 +95,8 @@ def test_web_search_real_mode_falls_back_to_mock_on_error(monkeypatch) -> None:
     assert "duckduckgo_error" in fallback_reason or "wikipedia_error" in fallback_reason
     assert isinstance(result.get("real_issues"), list)
     assert result["real_issues"]
+    assert result["provider_errors"]["duckduckgo"] >= 0
+    assert result["provider_errors"]["wikipedia"] >= 0
     sources = [item["source"] for item in result["results"]]
     assert "mock://langgraph/overview" in sources
 
@@ -206,6 +210,7 @@ def test_web_search_tavily_missing_key_falls_back_when_allowed(monkeypatch) -> N
     assert result["mode"] == "mock"
     assert result["fallback_used"] is True
     assert "tavily_missing_api_key" in str(result.get("fallback_reason", ""))
+    assert result["provider_errors"]["tavily"] >= 1
 
 
 def test_web_search_tavily_missing_key_raises_when_no_fallback(monkeypatch) -> None:
